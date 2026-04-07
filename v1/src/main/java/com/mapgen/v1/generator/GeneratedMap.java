@@ -1,5 +1,7 @@
 package com.mapgen.v1.generator;
 
+import java.util.UUID;
+
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.type.descriptor.jdbc.VarbinaryJdbcType;
 
@@ -24,9 +26,9 @@ import lombok.NoArgsConstructor;
 @Table(name = "generated_maps")
 public class GeneratedMap {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column
-    private Long id;
+    private UUID id;
 
     @Column(name = "size")
     private Integer size;

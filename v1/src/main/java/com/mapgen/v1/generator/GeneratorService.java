@@ -1,6 +1,7 @@
 package com.mapgen.v1.generator;
 
 import java.util.NoSuchElementException;
+import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,9 +22,11 @@ public class GeneratorService {
     }
     
     @Transactional
-    public void generate(Integer size, Integer seed){
+    public UUID generate(Integer size, Integer seed){
+        LOGGER.info("=== Started Generating ===");
         float[][] heightMap = new float[size][size];
         int[] flatMap = new int[size * size];
+
         FastNoiseLite noise = new FastNoiseLite(seed);
         noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
         noise.SetFrequency(0.05f);
@@ -35,7 +38,6 @@ public class GeneratorService {
                 int tileId;
                 heightMap[x][y] = normalisedHeight;
                 
-                // LOGGER.info("Normalised height: {}", normalisedHeight);
                 String[][] finalMap = new String[size][size];
                 if(normalisedHeight < 0.3){
                     finalMap[x][y] = Biomes.OCEAN.toString();
@@ -46,9 +48,12 @@ public class GeneratorService {
                 } else if(normalisedHeight < 0.8){
                     finalMap[x][y] = Biomes.GRASS.toString();
                     tileId = 2;
-                } else {
+                } else if(normalisedHeight < 0.9){
                     finalMap[x][y] = Biomes.MOUNTAINS.toString();
                     tileId = 3;
+                } else {
+                    finalMap[x][y] = Biomes.SNOWYPEAKS.toString();
+                    tileId = 4;
                 }
                 flatMap[y * size + x] = tileId;
             }    
@@ -58,15 +63,12 @@ public class GeneratorService {
         map.setSize(size);
         map.setMap(flatMap);
         this.generatorRepository.save(map);
+        LOGGER.info("=== Finished Generating ===");
 
-        LOGGER.info("==================================");
-        LOGGER.info("Noise: {}", noise.toString()); 
-        LOGGER.info("Size: {}", size);
-        LOGGER.info("Seed: {}", seed);
-        LOGGER.info("==============COMPLETE============");
+        return map.getId();
     }
 
-    public GeneratedMap getMapById(Long id){
+    public GeneratedMap getMapById(UUID id){
         return this.generatorRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Map with id" + id + " was not found"));
     }
 }

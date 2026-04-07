@@ -1,5 +1,7 @@
 package com.mapgen.v1.generator;
 
+import java.util.UUID;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,13 +22,13 @@ public class GeneratorController {
     }
 
     @PostMapping
-    public ResponseEntity<String> generateMap(@RequestBody GenerateRecord record){
-        this.generatorService.generate(record.size(), record.seed());
-        return ResponseEntity.ok("Started procedure");
+    public ResponseEntity<UUID> generateMap(@RequestBody GenerateRecord record){
+        UUID mapId = this.generatorService.generate(record.size(), record.seed());
+        return ResponseEntity.ok(mapId);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<GeneratedMap> getMapById(@PathVariable Long id){
+    public ResponseEntity<GeneratedMap> getMapById(@PathVariable UUID id){
         GeneratedMap map = this.generatorService.getMapById(id);
         if(map == null){
             return ResponseEntity.notFound().build();
