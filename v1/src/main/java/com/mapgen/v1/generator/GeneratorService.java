@@ -1,74 +1,108 @@
 package com.mapgen.v1.generator;
 
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import com.mapgen.v1.enums.Biomes;
+import com.mapgen.v1.enums.GeneratingStatus;
+import com.mapgen.v1.models.GeneratedMap;
+import com.mapgen.v1.models.MapChunk;
+import com.mapgen.v1.repository.ChunkRepository;
+import com.mapgen.v1.repository.GeneratorRepository;
 import com.mapgen.v1.util.FastNoiseLite;
-
-import jakarta.transaction.Transactional;
 
 @Service
 public class GeneratorService {
     private static final Logger LOGGER = LogManager.getLogger();
+    private static final int CHUNK_SIZE = 32;
     private final GeneratorRepository generatorRepository;
+    private final ChunkRepository chunkRepository;
 
-    public GeneratorService(GeneratorRepository generatorRepository){
+    public GeneratorService(GeneratorRepository generatorRepository, ChunkRepository chunkRepository){
         this.generatorRepository = generatorRepository;
+        this.chunkRepository = chunkRepository;
+    }
+
+    public UUID saveMap(GeneratedMap map) {
+        return this.generatorRepository.saveAndFlush(map).getId();
     }
     
-    @Transactional
-    public UUID generate(Integer size, Integer seed){
+    @Async
+    public void generate(GeneratedMap mapFromController){
+        GeneratedMap map = this.generatorRepository.findById(mapFromController.getId()).orElseThrow();
+        
         LOGGER.info("=== Started Generating ===");
-        float[][] heightMap = new float[size][size];
+        Integer size = map.getSize();
+        Integer seed = map.getSeed();
+        
         int[] flatMap = new int[size * size];
 
         FastNoiseLite noise = new FastNoiseLite(seed);
         noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
         noise.SetFrequency(0.05f);
         
-        for(int x = 0; x < size; x++){
-            for(int y = 0; y < size; y++){
-                float rawNoise = noise.GetNoise(x * 0.1f, y * 0.1f);
-                float normalisedHeight = (rawNoise + 1) / 2;
-                int tileId;
-                heightMap[x][y] = normalisedHeight;
-                
-                String[][] finalMap = new String[size][size];
-                if(normalisedHeight < 0.3){
-                    finalMap[x][y] = Biomes.OCEAN.toString();
-                    tileId = 0;
-                } else if(normalisedHeight < 0.5){
-                    finalMap[x][y] = Biomes.BEACH.toString();
-                    tileId = 1;
-                } else if(normalisedHeight < 0.8){
-                    finalMap[x][y] = Biomes.GRASS.toString();
-                    tileId = 2;
-                } else if(normalisedHeight < 0.9){
-                    finalMap[x][y] = Biomes.MOUNTAINS.toString();
-                    tileId = 3;
-                } else {
-                    finalMap[x][y] = Biomes.SNOWYPEAKS.toString();
-                    tileId = 4;
-                }
-                flatMap[y * size + x] = tileId;
-            }    
-        }
-        GeneratedMap map = new GeneratedMap();
-        map.setSeed(seed);
-        map.setSize(size);
-        map.setMap(flatMap);
-        this.generatorRepository.save(map);
-        LOGGER.info("=== Finished Generating ===");
+        for(int chunkX = 0; chunkX < size; chunkX += CHUNK_SIZE){
+            for (int chunkY = 0; chunkY < size; chunkY += CHUNK_SIZE){
+                int[] flatChunkMap = new int[CHUNK_SIZE * CHUNK_SIZE];
+                for (int x = 0; x < CHUNK_SIZE; x++){
+                    for (int y = 0; y < CHUNK_SIZE; y++){
+                        int globalX = chunkX + x;
+                        int globalY = chunkY + y;
 
-        return map.getId();
+                        if (globalX >= size || globalY >= size) {
+                            continue;
+                        }
+
+                        float rawNoise = noise.GetNoise(globalX * 0.1f, globalY * 0.1f);
+                        float normalisedHeight = (rawNoise + 1) / 2;
+                        int tileId;
+
+                        if(normalisedHeight < 0.3){
+                            tileId = 0;
+                        } else if(normalisedHeight < 0.5){
+                            tileId = 1;
+                        } else if(normalisedHeight < 0.8){
+                            tileId = 2;
+                        } else if(normalisedHeight < 0.9){
+                            tileId = 3;
+                        } else {
+                            tileId = 4;
+                        }
+
+                        flatMap[globalY * size + globalX] = tileId;
+                        flatChunkMap[y * CHUNK_SIZE + x] = tileId;
+                    }
+                }
+                MapChunk mapChunk = new MapChunk();
+                mapChunk.setGeneratedMap(map);
+                mapChunk.setChunkX(chunkX);
+                mapChunk.setChunkY(chunkY);
+                mapChunk.setChunk(flatChunkMap);
+                this.chunkRepository.saveAndFlush(mapChunk);
+            }
+        }
+
+        map.setMap(flatMap);
+        map.setStatus(GeneratingStatus.COMPLETED);
+        this.generatorRepository.saveAndFlush(map);
+        LOGGER.info("=== Finished Generating Map ID: {} ===", map.getId());
     }
 
     public GeneratedMap getMapById(UUID id){
         return this.generatorRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Map with id" + id + " was not found"));
     }
+
+    public List<MapChunk> getChunksByMapId(UUID id, Long afterId){
+        GeneratedMap map = getMapById(id);
+        if (afterId != null) {
+            return this.chunkRepository.findByGeneratedMapAndIdGreaterThan(map, afterId);
+        }
+        return this.chunkRepository.findByGeneratedMap(map);
+    }
+    
 }

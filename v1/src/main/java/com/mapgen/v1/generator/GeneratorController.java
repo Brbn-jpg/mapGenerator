@@ -10,7 +10,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.mapgen.v1.enums.GeneratingStatus;
+import com.mapgen.v1.models.GeneratedMap;
+import com.mapgen.v1.models.MapChunk;
 import com.mapgen.v1.records.GenerateRecord;
+import org.springframework.web.bind.annotation.RequestParam;
+
 
 @RestController
 @RequestMapping("/generate")
@@ -23,7 +28,15 @@ public class GeneratorController {
 
     @PostMapping
     public ResponseEntity<UUID> generateMap(@RequestBody GenerateRecord record){
-        UUID mapId = this.generatorService.generate(record.size(), record.seed());
+        GeneratedMap map = new GeneratedMap();
+        map.setSeed(record.seed());
+        map.setSize(record.size());
+        map.setStatus(GeneratingStatus.IN_PROGRESS);
+        
+        UUID mapId = this.generatorService.saveMap(map);
+        
+        this.generatorService.generate(map);
+        
         return ResponseEntity.ok(mapId);
     }
 
@@ -35,4 +48,12 @@ public class GeneratorController {
         }
         return ResponseEntity.ok(map);
     }
+
+    @GetMapping("/{id}/chunks")
+    public ResponseEntity<java.util.List<MapChunk>> getChunksByMapId(
+            @PathVariable UUID id, 
+            @RequestParam(required = false) Long afterId) {
+        return ResponseEntity.ok(this.generatorService.getChunksByMapId(id, afterId));
+    }
+    
 }
