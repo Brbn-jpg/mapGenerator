@@ -42,9 +42,18 @@ public class GeneratorService {
         
         int[] flatMap = new int[size * size];
 
-        FastNoiseLite noise = new FastNoiseLite(seed);
-        noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
-        noise.SetFrequency(0.05f);
+        FastNoiseLite heightmap = new FastNoiseLite(seed);
+        heightmap.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        heightmap.SetFrequency(0.005f);
+        heightmap.SetFractalType(FastNoiseLite.FractalType.FBm);
+        heightmap.SetFractalWeightedStrength(0.5f);
+        heightmap.SetFractalOctaves(5);
+
+        FastNoiseLite moisutre = new FastNoiseLite(seed+1000);
+        moisutre.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        moisutre.SetFrequency(0.003f);
+        moisutre.SetFractalType(FastNoiseLite.FractalType.FBm);
+        moisutre.SetFractalOctaves(5);
         
         for(int chunkX = 0; chunkX < size; chunkX += CHUNK_SIZE){
             for (int chunkY = 0; chunkY < size; chunkY += CHUNK_SIZE){
@@ -58,22 +67,39 @@ public class GeneratorService {
                             continue;
                         }
 
-                        float rawNoise = noise.GetNoise(globalX * 0.1f, globalY * 0.1f);
-                        float normalisedHeight = (rawNoise + 1) / 2;
+                        float rawHeightmapNoise = heightmap.GetNoise(globalX, globalY);
+                        float normalisedHeight = (rawHeightmapNoise + 1) / 2;
+
+                        float rawMoisutreNoise = moisutre.GetNoise(globalX, globalY);
+                        float normalisedMoisture = (rawMoisutreNoise + 1) / 2;
+
                         int tileId;
 
-                        if(normalisedHeight < 0.3){
-                            tileId = 0;
-                        } else if(normalisedHeight < 0.5){
-                            tileId = 1;
-                        } else if(normalisedHeight < 0.8){
-                            tileId = 2;
-                        } else if(normalisedHeight < 0.9){
-                            tileId = 3;
+                        if (normalisedHeight < 0.15) {
+                            tileId = 0; // Void
+                        } else if (normalisedHeight < 0.40) {
+                            // Oceans and coral reefs
+                            tileId = (normalisedMoisture > 0.5) ? 9 : 4; 
+                        } else if (normalisedHeight < 0.48) {
+                            // Coast (Narrow strip of beach and swamps near water)
+                            if (normalisedMoisture < 0.3) tileId = 10;
+                            else if (normalisedMoisture < 0.7) tileId = 5;
+                            else tileId = 1;
+                        } else if (normalisedHeight < 0.75) {
+                            // Land
+                            if (normalisedMoisture < 0.2) tileId = 8;
+                            else if (normalisedMoisture < 0.4) tileId = 12;
+                            else if (normalisedMoisture < 0.75) tileId = 6;
+                            else tileId = 13;
+                        } else if (normalisedHeight < 0.90) {
+                            // Heights
+                            if (normalisedMoisture < 0.3) tileId = 3;
+                            else if (normalisedMoisture < 0.6) tileId = 14;
+                            else tileId = 2;
                         } else {
-                            tileId = 4;
+                            // Mountains
+                            tileId = (normalisedMoisture > 0.5) ? 7 : 15;
                         }
-
                         flatMap[globalY * size + globalX] = tileId;
                         flatChunkMap[y * CHUNK_SIZE + x] = tileId;
                     }

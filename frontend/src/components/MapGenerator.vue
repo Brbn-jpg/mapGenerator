@@ -10,11 +10,31 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const CHUNK_SIZE = 32;
 
 const colors: Record<number, string> = {
-  0: "#0000FF", // Ocean
-  1: "#F4A460", // Beach (Sand)
-  2: "#228B22", // Grass
-  3: "#808080", // Mountains
-  4: "#FFFFFF", // Snowy Peaks
+  // --- Water level (Height < 0.3) ---
+  0: "#000044", // Void
+  4: "#00008B", // Deep ocean
+  9: "#1E90FF", // Narrow water (near coast)
+
+  // --- Low level (Height 0.3 - 0.5) ---
+  10: "#F5F5DC", // Bright sand (dry coast)
+  5: "#F4A460", // Sandy beach (standard)
+  1: "#2E8B57", // Swamps (high moisture)
+  11: "#556B2F", // Mangroves (high moisture)
+
+  // --- Medium level (Height 0.5 - 0.7) ---
+  8: "#D2B48C", // Desert (low moisture)
+  12: "#C2B280", // Savanna (low moisture/mid moisutre)
+  6: "#32CD32", // Green grass (high moisture)
+  13: "#008000", // Forest (very high moisture)
+
+  // --- High level (Height 0.7 - 0.85) ---
+  14: "#4B5320", // Taiga (high moisture)
+  2: "#006400", // Dark forest / Jungle
+  3: "#8B4513", // Dry mouintains / canions
+
+  // --- Very high level (Height > 0.85) ---
+  15: "#808080", // Rock (tall mouintains)
+  7: "#FFFFFF", // Snowy peaks
 };
 
 const generateMap = async () => {
@@ -22,7 +42,7 @@ const generateMap = async () => {
   mapId.value = "";
 
   // Clear canvas before starting
-  const ctx = canvasRef.value?.getContext('2d');
+  const ctx = canvasRef.value?.getContext("2d");
   if (ctx && canvasRef.value) {
     ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
     canvasRef.value.width = size.value;
@@ -57,16 +77,23 @@ const startPolling = async (id: string) => {
 
     try {
       // 1. Fetch NEW chunks
-      const chunkResponse = await axios.get(`http://localhost:8080/generate/${id}/chunks`, {
-        params: { afterId: lastChunkId || undefined }
-      });
+      const chunkResponse = await axios.get(
+        `http://localhost:8080/generate/${id}/chunks`,
+        {
+          params: { afterId: lastChunkId || undefined },
+        },
+      );
       const newChunks = chunkResponse.data || [];
 
       // 2. Fetch current status
-      const mapResponse = await axios.get(`http://localhost:8080/generate/${id}`);
+      const mapResponse = await axios.get(
+        `http://localhost:8080/generate/${id}`,
+      );
       const status = mapResponse.data.status;
 
-      console.log(`Poll ID: ${id}. Status: ${status}. New chunks: ${newChunks.length}`);
+      console.log(
+        `Poll ID: ${id}. Status: ${status}. New chunks: ${newChunks.length}`,
+      );
 
       // 3. Draw new chunks
       newChunks.forEach((chunk: any) => {
@@ -77,7 +104,7 @@ const startPolling = async (id: string) => {
       });
 
       // 4. Terminate if COMPLETED
-      if (status && status.toString().toUpperCase() === 'COMPLETED') {
+      if (status && status.toString().toUpperCase() === "COMPLETED") {
         loading.value = false;
         console.log("Map generation finished for ID:", id);
         return;
@@ -106,8 +133,8 @@ const drawChunk = (chunk: any) => {
     const tileId = data[i];
     const colorHex = colors[tileId] || "#000000";
     const r = parseInt(colorHex.slice(1, 3), 16);
-    const g = parseInt(colorHex.slice(3, 5), 16)
-    const b = parseInt(colorHex.slice(5, 7), 16)
+    const g = parseInt(colorHex.slice(3, 5), 16);
+    const b = parseInt(colorHex.slice(5, 7), 16);
 
     imgData.data[i * 4] = r;
     imgData.data[i * 4 + 1] = g;
