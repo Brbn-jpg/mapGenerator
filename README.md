@@ -57,21 +57,40 @@ The UI will be available at `http://localhost:5173`.
 
 - `POST /generate`: Creates a new map.
   - **Body**: `{ "size": 100, "seed": 12345 }`
-  - **Returns**: `UUID` of the generated map.
-- `GET /generate/{id}`: Retrieves map data.
-  - **Returns**: `GeneratedMap` object containing the `int[]` array.
+  - **Returns**: `Long` ID of the generated map.
+- `GET /generate/{id}`: Retrieves map metadata and status.
+  - **Returns**: `GeneratedMap` object.
+- `GET /generate/{id}/chunks`: Retrieves chunks for a map.
+  - **Query Param**: `afterId` (optional) to fetch only new chunks.
+  - **Returns**: `List<MapChunk>` containing chunk coordinates and tile data.
 
 ## Biomes & Legend
 
-Maps are generated as a flattened 1D array of integers. The frontend maps these IDs to colors:
+The map is divided into chunks, each containing a flattened 1D array of integers representing tile IDs. The frontend maps these IDs to specific colors based on height and moisture:
 
-| ID | Biome | Color | Range (Height) |
+| ID | Biome | Hex Color | Range (Height) |
 |---|---|---|---|
-| 0 | Ocean | Blue | < 0.3 |
-| 1 | Beach | Sand | 0.3 - 0.5 |
-| 2 | Grass | Green | 0.5 - 0.8 |
-| 3 | Mountains | Gray | 0.8 - 0.9 |
-| 4 | Snowy Peaks | White | > 0.9 |
+| **Water Level** | | | **< 0.3** |
+| 0 | Void | `#000044` | |
+| 4 | Deep ocean | `#00008B` | |
+| 9 | Narrow water (near coast) | `#1E90FF` | |
+| **Low Level** | | | **0.3 - 0.5** |
+| 10 | Bright sand (dry coast) | `#F5F5DC` | |
+| 5 | Sandy beach (standard) | `#F4A460` | |
+| 1 | Swamps (high moisture) | `#2E8B57` | |
+| 11 | Mangroves (high moisture) | `#556B2F` | |
+| **Medium Level** | | | **0.5 - 0.7** |
+| 8 | Desert (low moisture) | `#D2B48C` | |
+| 12 | Savanna (mid moisture) | `#C2B280` | |
+| 6 | Green grass (high moisture) | `#32CD32` | |
+| 13 | Forest (very high moisture) | `#008000` | |
+| **High Level** | | | **0.7 - 0.85** |
+| 14 | Taiga (high moisture) | `#4B5320` | |
+| 2 | Dark forest / Jungle | `#006400` | |
+| 3 | Dry mountains / canyons | `#8B4513` | |
+| **Very High Level** | | | **> 0.85** |
+| 15 | Rock (tall mountains) | `#808080` | |
+| 7 | Snowy peaks | `#FFFFFF` | |
 
 ## Technologies Used
 
