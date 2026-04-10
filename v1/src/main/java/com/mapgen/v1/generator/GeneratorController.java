@@ -1,6 +1,6 @@
 package com.mapgen.v1.generator;
 
-import java.util.UUID;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,13 +27,13 @@ public class GeneratorController {
     }
 
     @PostMapping
-    public ResponseEntity<UUID> generateMap(@RequestBody GenerateRecord record){
+    public ResponseEntity<Long> generateMap(@RequestBody GenerateRecord record){
         GeneratedMap map = new GeneratedMap();
         map.setSeed(record.seed());
         map.setSize(record.size());
         map.setStatus(GeneratingStatus.IN_PROGRESS);
         
-        UUID mapId = this.generatorService.saveMap(map);
+        Long mapId = this.generatorService.saveMap(map);
         
         this.generatorService.generate(map);
         
@@ -41,7 +41,7 @@ public class GeneratorController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<GeneratedMap> getMapById(@PathVariable UUID id){
+    public ResponseEntity<GeneratedMap> getMapById(@PathVariable Long id){
         GeneratedMap map = this.generatorService.getMapById(id);
         if(map == null){
             return ResponseEntity.notFound().build();
@@ -50,9 +50,9 @@ public class GeneratorController {
     }
 
     @GetMapping("/{id}/chunks")
-    public ResponseEntity<java.util.List<MapChunk>> getChunksByMapId(
-            @PathVariable UUID id, 
-            @RequestParam(required = false) Long afterId) {
+    public ResponseEntity<List<MapChunk>> getChunksByMapId(
+        @PathVariable Long id, 
+        @RequestParam(required = false) Long afterId) {
         return ResponseEntity.ok(this.generatorService.getChunksByMapId(id, afterId));
     }
     

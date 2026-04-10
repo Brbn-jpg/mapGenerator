@@ -1,8 +1,8 @@
 package com.mapgen.v1.generator;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,6 +15,8 @@ import com.mapgen.v1.models.MapChunk;
 import com.mapgen.v1.repository.ChunkRepository;
 import com.mapgen.v1.repository.GeneratorRepository;
 import com.mapgen.v1.util.FastNoiseLite;
+import com.mapgen.v1.util.FastNoiseLite.FractalType;
+import com.mapgen.v1.util.FastNoiseLite.NoiseType;
 
 @Service
 public class GeneratorService {
@@ -28,7 +30,7 @@ public class GeneratorService {
         this.chunkRepository = chunkRepository;
     }
 
-    public UUID saveMap(GeneratedMap map) {
+    public Long saveMap(GeneratedMap map) {
         return this.generatorRepository.saveAndFlush(map).getId();
     }
     
@@ -39,21 +41,31 @@ public class GeneratorService {
         LOGGER.info("=== Started Generating ===");
         Integer size = map.getSize();
         Integer seed = map.getSeed();
-        
-        int[] flatMap = new int[size * size];
 
         FastNoiseLite heightmap = new FastNoiseLite(seed);
-        heightmap.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        heightmap.SetNoiseType(NoiseType.OpenSimplex2);
         heightmap.SetFrequency(0.005f);
-        heightmap.SetFractalType(FastNoiseLite.FractalType.FBm);
+        heightmap.SetFractalType(FractalType.FBm);
         heightmap.SetFractalWeightedStrength(0.5f);
         heightmap.SetFractalOctaves(5);
 
         FastNoiseLite moisutre = new FastNoiseLite(seed+1000);
-        moisutre.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        moisutre.SetNoiseType(NoiseType.OpenSimplex2);
         moisutre.SetFrequency(0.003f);
-        moisutre.SetFractalType(FastNoiseLite.FractalType.FBm);
+        moisutre.SetFractalType(FractalType.FBm);
         moisutre.SetFractalOctaves(5);
+
+        FastNoiseLite continentMask = new FastNoiseLite(seed-1000);
+        continentMask.SetNoiseType(NoiseType.OpenSimplex2);
+        continentMask.SetFrequency(0.001f);
+
+        FastNoiseLite warpNoise = new FastNoiseLite(seed+2000);
+        warpNoise.SetNoiseType(NoiseType.OpenSimplex2);
+        warpNoise.SetFrequency(0.001f);
+        warpNoise.SetFractalType(FractalType.FBm);
+        warpNoise.SetFractalOctaves(3);
+
+        List<MapChunk> chunkBuffer = new ArrayList<>();
         
         for(int chunkX = 0; chunkX < size; chunkX += CHUNK_SIZE){
             for (int chunkY = 0; chunkY < size; chunkY += CHUNK_SIZE){
@@ -63,35 +75,47 @@ public class GeneratorService {
                         int globalX = chunkX + x;
                         int globalY = chunkY + y;
 
+                        float warpX = warpNoise.GetNoise(globalX, globalY) * 30f;
+                        float warpY = warpNoise.GetNoise(globalX + 1000, globalY + 1000) * 30f;
+
+                        float warpedX = globalX + warpX;
+                        float warpedY = globalY + warpY;
+
                         if (globalX >= size || globalY >= size) {
                             continue;
                         }
 
-                        float rawHeightmapNoise = heightmap.GetNoise(globalX, globalY);
+                        float rawHeightmapNoise = heightmap.GetNoise(warpedX, warpedY);
                         float normalisedHeight = (rawHeightmapNoise + 1) / 2;
 
-                        float rawMoisutreNoise = moisutre.GetNoise(globalX, globalY);
+                        float rawMoisutreNoise = moisutre.GetNoise(warpedX, warpedY);
                         float normalisedMoisture = (rawMoisutreNoise + 1) / 2;
+
+                        float rawMask = continentMask.GetNoise(warpedX, warpedY);
+                        float normalisedMask = (rawMask + 1) / 2;
+                        normalisedMask = (float) Math.pow(normalisedMask, 2.0);
+
+                        float finalHeight = (normalisedMask * 0.8f) + (normalisedHeight * 0.2f);
 
                         int tileId;
 
-                        if (normalisedHeight < 0.15) {
+                        if (finalHeight < 0.15) {
                             tileId = 0; // Void
-                        } else if (normalisedHeight < 0.40) {
+                        } else if (finalHeight < 0.40) {
                             // Oceans and coral reefs
                             tileId = (normalisedMoisture > 0.5) ? 9 : 4; 
-                        } else if (normalisedHeight < 0.48) {
+                        } else if (finalHeight < 0.48) {
                             // Coast (Narrow strip of beach and swamps near water)
                             if (normalisedMoisture < 0.3) tileId = 10;
                             else if (normalisedMoisture < 0.7) tileId = 5;
                             else tileId = 1;
-                        } else if (normalisedHeight < 0.75) {
+                        } else if (finalHeight < 0.75) {
                             // Land
                             if (normalisedMoisture < 0.2) tileId = 8;
                             else if (normalisedMoisture < 0.4) tileId = 12;
                             else if (normalisedMoisture < 0.75) tileId = 6;
                             else tileId = 13;
-                        } else if (normalisedHeight < 0.90) {
+                        } else if (finalHeight < 0.90) {
                             // Heights
                             if (normalisedMoisture < 0.3) tileId = 3;
                             else if (normalisedMoisture < 0.6) tileId = 14;
@@ -100,7 +124,6 @@ public class GeneratorService {
                             // Mountains
                             tileId = (normalisedMoisture > 0.5) ? 7 : 15;
                         }
-                        flatMap[globalY * size + globalX] = tileId;
                         flatChunkMap[y * CHUNK_SIZE + x] = tileId;
                     }
                 }
@@ -109,21 +132,23 @@ public class GeneratorService {
                 mapChunk.setChunkX(chunkX);
                 mapChunk.setChunkY(chunkY);
                 mapChunk.setChunk(flatChunkMap);
-                this.chunkRepository.saveAndFlush(mapChunk);
+                chunkBuffer.add(mapChunk);
+
             }
+            this.chunkRepository.saveAll(chunkBuffer);
+            chunkBuffer.clear();
         }
 
-        map.setMap(flatMap);
         map.setStatus(GeneratingStatus.COMPLETED);
-        this.generatorRepository.saveAndFlush(map);
+        this.generatorRepository.save(map);
         LOGGER.info("=== Finished Generating Map ID: {} ===", map.getId());
     }
 
-    public GeneratedMap getMapById(UUID id){
+    public GeneratedMap getMapById(Long id){
         return this.generatorRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Map with id" + id + " was not found"));
     }
 
-    public List<MapChunk> getChunksByMapId(UUID id, Long afterId){
+    public List<MapChunk> getChunksByMapId(Long id, Long afterId){
         GeneratedMap map = getMapById(id);
         if (afterId != null) {
             return this.chunkRepository.findByGeneratedMapAndIdGreaterThan(map, afterId);

@@ -1,7 +1,6 @@
 package com.mapgen.v1.enums;
 
 public enum GeneratingStatus {
-    PENDING("Pending"),
     IN_PROGRESS("In progress"),
     COMPLETED("Completed");
 

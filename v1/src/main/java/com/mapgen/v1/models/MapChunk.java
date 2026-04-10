@@ -1,6 +1,6 @@
 package com.mapgen.v1.models;
 
-import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,9 +21,9 @@ import lombok.NoArgsConstructor;
 @Table(name = "map_chunks")
 public class MapChunk {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column
-    private UUID id;
+    private Long id;
 
     @Column(name = "chunkX")
     private Integer chunkX;
@@ -36,6 +36,6 @@ public class MapChunk {
 
     @ManyToOne
     @JoinColumn(name = "generated_map_id", nullable = false)
-    @com.fasterxml.jackson.annotation.JsonIgnore
+    @JsonIgnore
     private GeneratedMap generatedMap;
 }
