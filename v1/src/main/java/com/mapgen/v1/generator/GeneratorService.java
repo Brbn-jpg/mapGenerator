@@ -43,24 +43,28 @@ public class GeneratorService {
         Integer seed = map.getSeed();
 
         FastNoiseLite heightmap = new FastNoiseLite(seed);
-        heightmap.SetNoiseType(NoiseType.OpenSimplex2);
+        heightmap.SetNoiseType(NoiseType.ValueCubic);
         heightmap.SetFrequency(0.005f);
         heightmap.SetFractalType(FractalType.FBm);
         heightmap.SetFractalWeightedStrength(0.5f);
         heightmap.SetFractalOctaves(5);
 
         FastNoiseLite moisutre = new FastNoiseLite(seed+1000);
-        moisutre.SetNoiseType(NoiseType.OpenSimplex2);
+        moisutre.SetNoiseType(NoiseType.ValueCubic);
         moisutre.SetFrequency(0.003f);
         moisutre.SetFractalType(FractalType.FBm);
         moisutre.SetFractalOctaves(5);
 
+        FastNoiseLite temperature = new FastNoiseLite(seed / 2 + 1);
+        temperature.SetNoiseType(NoiseType.OpenSimplex2);
+        temperature.SetFrequency(0.0001f);
+
         FastNoiseLite continentMask = new FastNoiseLite(seed-1000);
-        continentMask.SetNoiseType(NoiseType.OpenSimplex2);
+        continentMask.SetNoiseType(NoiseType.ValueCubic);
         continentMask.SetFrequency(0.001f);
 
         FastNoiseLite warpNoise = new FastNoiseLite(seed+2000);
-        warpNoise.SetNoiseType(NoiseType.OpenSimplex2);
+        warpNoise.SetNoiseType(NoiseType.ValueCubic);
         warpNoise.SetFrequency(0.001f);
         warpNoise.SetFractalType(FractalType.FBm);
         warpNoise.SetFractalOctaves(3);
@@ -91,6 +95,9 @@ public class GeneratorService {
                         float rawMoisutreNoise = moisutre.GetNoise(warpedX, warpedY);
                         float normalisedMoisture = (rawMoisutreNoise + 1) / 2;
 
+                        float rawTemperatureNoise = temperature.GetNoise(warpedX, warpedY);
+                        float normalisedTemperature = (rawTemperatureNoise + 1) / 2;
+
                         float rawMask = continentMask.GetNoise(warpedX, warpedY);
                         float normalisedMask = (rawMask + 1) / 2;
                         normalisedMask = (float) Math.pow(normalisedMask, 2.0);
@@ -99,30 +106,51 @@ public class GeneratorService {
 
                         int tileId;
 
+                        // 1. WATER ZONE
                         if (finalHeight < 0.15) {
-                            tileId = 0; // Void
+                            tileId = 0; // Abyss
                         } else if (finalHeight < 0.40) {
-                            // Oceans and coral reefs
-                            tileId = (normalisedMoisture > 0.5) ? 9 : 4; 
-                        } else if (finalHeight < 0.48) {
-                            // Coast (Narrow strip of beach and swamps near water)
-                            if (normalisedMoisture < 0.3) tileId = 10;
-                            else if (normalisedMoisture < 0.7) tileId = 5;
-                            else tileId = 1;
-                        } else if (finalHeight < 0.75) {
-                            // Land
-                            if (normalisedMoisture < 0.2) tileId = 8;
-                            else if (normalisedMoisture < 0.4) tileId = 12;
-                            else if (normalisedMoisture < 0.75) tileId = 6;
-                            else tileId = 13;
-                        } else if (finalHeight < 0.90) {
-                            // Heights
-                            if (normalisedMoisture < 0.3) tileId = 3;
-                            else if (normalisedMoisture < 0.6) tileId = 14;
-                            else tileId = 2;
-                        } else {
-                            // Mountains
-                            tileId = (normalisedMoisture > 0.5) ? 7 : 15;
+                            if (normalisedTemperature < 0.2) tileId = 3;   // Frozen Ocean
+                            else if (normalisedMoisture > 0.6) tileId = 2; // Shallow water
+                            else tileId = 1;                               // Standard Ocean
+                        } 
+                        // 2. COAST ZONE
+                        else if (finalHeight < 0.45) {
+                            if (normalisedTemperature < 0.3) tileId = 6;                                  // Rocky beach (Cold)
+                            else if (normalisedTemperature > 0.7 && normalisedMoisture > 0.8) tileId = 7; // Mangroves
+                            else if (normalisedMoisture < 0.3) tileId = 4;                                // Light sand
+                            else tileId = 5;                                                              // Standard beach
+                        } 
+                        // 3. MAINLAND
+                        else if (finalHeight < 0.85) {
+                            
+                            if (normalisedTemperature < 0.35) {
+                                // --- COLD CLIMATE ---
+                                if (normalisedMoisture < 0.3) tileId = 8;      // Snow desert
+                                else if (normalisedMoisture < 0.6) tileId = 9; // Tundra
+                                else tileId = 10;                              // Taiga
+                                
+                            } else if (normalisedTemperature < 0.65) {
+                                // --- TEMPERATE CLIMATE ---
+                                if (normalisedMoisture < 0.3) tileId = 11;      // Steppe
+                                else if (normalisedMoisture < 0.6) tileId = 12; // Plains
+                                else if (normalisedMoisture < 0.85) tileId = 13;// Mixed Forest
+                                else tileId = 14;                               // Swamps
+                                
+                            } else {
+                                // --- HOT CLIMATE ---
+                                if (normalisedMoisture < 0.25) tileId = 15;     // Desert
+                                else if (normalisedMoisture < 0.5) tileId = 17; // Dry Shrubs
+                                else if (normalisedMoisture < 0.75) tileId = 16;// Savanna
+                                else tileId = 18;                               // Jungle
+                            }
+                        } 
+                        // 4. MOUNTAINS AND PEAKS
+                        else {
+                            if (normalisedTemperature < 0.4) tileId = 22;      // Eternal Snow
+                            else if (normalisedTemperature < 0.7) tileId = 21; // Alpine Tundra
+                            else if (normalisedMoisture < 0.4) tileId = 19;    // Canyons / Dry Rocks
+                            else tileId = 20;                                  // Bare Rocks
                         }
                         flatChunkMap[y * CHUNK_SIZE + x] = tileId;
                     }

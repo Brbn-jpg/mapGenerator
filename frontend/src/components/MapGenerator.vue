@@ -10,31 +10,40 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const CHUNK_SIZE = 32;
 
 const colors: Record<number, string> = {
-  // --- Water level (Height < 0.3) ---
-  0: "#000044", // Void
-  4: "#00008B", // Deep ocean
-  9: "#1E90FF", // Narrow water (near coast)
+  // --- WATER (Height < 0.4) ---
+  0: "#000033", // Abyss (Very deep)
+  1: "#000080", // Ocean (Standard)
+  2: "#1E90FF", // Shallow water / Shelf
+  3: "#A5F2F3", // Frozen Ocean / Ice floes (Very low temp)
 
-  // --- Low level (Height 0.3 - 0.5) ---
-  10: "#F5F5DC", // Bright sand (dry coast)
-  5: "#F4A460", // Sandy beach (standard)
-  1: "#2E8B57", // Swamps (high moisture)
-  11: "#556B2F", // Mangroves (high moisture)
+  // --- COAST (Height 0.4 - 0.45) ---
+  4: "#FFF8DC", // Bright sandy beach (Dry, hot)
+  5: "#F4A460", // Sandy beach (Standard)
+  6: "#8B7D6B", // Rocky/Gravel beach (Cold climate)
+  7: "#556B2F", // Mangroves (Hot and very wet climate)
 
-  // --- Medium level (Height 0.5 - 0.7) ---
-  8: "#D2B48C", // Desert (low moisture)
-  12: "#C2B280", // Savanna (low moisture/mid moisutre)
-  6: "#32CD32", // Green grass (high moisture)
-  13: "#008000", // Forest (very high moisture)
+  // --- LAND: COLD CLIMATE (Height 0.45 - 0.8, Temp < 0.35) ---
+  8: "#F0F8FF", // Snow desert / Ice sheet
+  9: "#BDB76B", // Tundra / Permafrost
+  10: "#2F4F4F", // Taiga (Dark coniferous forest)
 
-  // --- High level (Height 0.7 - 0.85) ---
-  14: "#4B5320", // Taiga (high moisture)
-  2: "#006400", // Dark forest / Jungle
-  3: "#8B4513", // Dry mouintains / canions
+  // --- LAND: TEMPERATE CLIMATE (Height 0.45 - 0.8, Temp 0.35 - 0.65) ---
+  11: "#C2B280", // Steppe / Dry grasses
+  12: "#7CFC00", // Green Plains / Grass
+  13: "#228B22", // Mixed / Deciduous Forest
+  14: "#2E8B57", // Swamps (Very high humidity)
 
-  // --- Very high level (Height > 0.85) ---
-  15: "#808080", // Rock (tall mouintains)
-  7: "#FFFFFF", // Snowy peaks
+  // --- LAND: HOT CLIMATE (Height 0.45 - 0.8, Temp > 0.65) ---
+  15: "#EDC9AF", // Sandy Desert (Sahara)
+  16: "#E6DAA6", // Savanna
+  17: "#8FBC8F", // Dry shrubs (Scrubland / Chaparral)
+  18: "#004B49", // Tropical Jungle / Rainforest
+
+  // --- MOUNTAINS AND PEAKS (Height > 0.8) ---
+  19: "#8B4513", // Sun-scorched rocks / Canyon (Hot and dry)
+  20: "#696969", // Bare, gray rocks (Standard)
+  21: "#A9A9A9", // Alpine Tundra (Cold, harsh peaks)
+  22: "#FFFFFF", // Snowy peak / Glacier
 };
 
 const generateMap = async () => {

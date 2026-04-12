@@ -66,31 +66,39 @@ The UI will be available at `http://localhost:5173`.
 
 ## Biomes & Legend
 
-The map is divided into chunks, each containing a flattened 1D array of integers representing tile IDs. The frontend maps these IDs to specific colors based on height and moisture:
+The map is procedurally generated using multiple noise layers (height, moisture, temperature, and continent mask). The frontend maps tile IDs to specific colors to visualize different biomes:
 
-| ID | Biome | Hex Color | Range (Height) |
+| ID | Biome | Hex Color | Description |
 |---|---|---|---|
-| **Water Level** | | | **< 0.3** |
-| 0 | Void | `#000044` | |
-| 4 | Deep ocean | `#00008B` | |
-| 9 | Narrow water (near coast) | `#1E90FF` | |
-| **Low Level** | | | **0.3 - 0.5** |
-| 10 | Bright sand (dry coast) | `#F5F5DC` | |
-| 5 | Sandy beach (standard) | `#F4A460` | |
-| 1 | Swamps (high moisture) | `#2E8B57` | |
-| 11 | Mangroves (high moisture) | `#556B2F` | |
-| **Medium Level** | | | **0.5 - 0.7** |
-| 8 | Desert (low moisture) | `#D2B48C` | |
-| 12 | Savanna (mid moisture) | `#C2B280` | |
-| 6 | Green grass (high moisture) | `#32CD32` | |
-| 13 | Forest (very high moisture) | `#008000` | |
-| **High Level** | | | **0.7 - 0.85** |
-| 14 | Taiga (high moisture) | `#4B5320` | |
-| 2 | Dark forest / Jungle | `#006400` | |
-| 3 | Dry mountains / canyons | `#8B4513` | |
-| **Very High Level** | | | **> 0.85** |
-| 15 | Rock (tall mountains) | `#808080` | |
-| 7 | Snowy peaks | `#FFFFFF` | |
+| **Water Zone** | | | **Height < 0.40** |
+| 0 | Abyss | `#000033` | Very deep ocean areas |
+| 1 | Ocean | `#000080` | Standard ocean depth |
+| 2 | Shallow Water | `#1E90FF` | Coastal shelf areas |
+| 3 | Frozen Ocean | `#A5F2F3` | Arctic waters with ice floes |
+| **Coast Zone** | | | **Height 0.40 - 0.45** |
+| 4 | Bright Sand | `#FFF8DC` | Dry, hot sandy beaches |
+| 5 | Sandy Beach | `#F4A460` | Standard coastal beaches |
+| 6 | Rocky Beach | `#8B7D6B` | Cold, gravelly/stony coasts |
+| 7 | Mangroves | `#556B2F` | Hot and very wet tropical coasts |
+| **Mainland (Cold)** | | | **Height 0.45 - 0.85, Temp < 0.35** |
+| 8 | Snow Desert | `#F0F8FF` | Ice sheets and frozen wastes |
+| 9 | Tundra | `#BDB76B` | Permafrost and mossy plains |
+| 10 | Taiga | `#2F4F4F` | Dark coniferous forests |
+| **Mainland (Temperate)** | | | **Height 0.45 - 0.85, Temp 0.35 - 0.65** |
+| 11 | Steppe | `#C2B280` | Dry grasslands and scrub |
+| 12 | Green Plains | `#7CFC00` | Standard temperate grasslands |
+| 13 | Mixed Forest | `#228B22` | Deciduous and mixed woodland |
+| 14 | Swamps | `#2E8B57` | High humidity wetlands |
+| **Mainland (Hot)** | | | **Height 0.45 - 0.85, Temp > 0.65** |
+| 15 | Sandy Desert | `#EDC9AF` | Arid dunes and Sahara-like regions |
+| 16 | Savanna | `#E6DAA6` | Tropical grasslands with sparse trees |
+| 17 | Dry Shrubs | `#8FBC8F` | Chaparral and scrubland |
+| 18 | Tropical Jungle | `#004B49` | Dense, humid rainforests |
+| **Mountains & Peaks** | | | **Height > 0.85** |
+| 19 | Canyons | `#8B4513` | Sun-scorched, arid rocky peaks |
+| 20 | Gray Rocks | `#696969` | Standard high-altitude bare stone |
+| 21 | Alpine Tundra | `#A9A9A9` | Cold, harsh high-altitude vegetation |
+| 22 | Snowy Peak | `#FFFFFF` | Eternal snow and glaciers |
 
 ## Technologies Used
 
