@@ -69,6 +69,12 @@ public class GeneratorService {
         warpNoise.SetFractalType(FractalType.FBm);
         warpNoise.SetFractalOctaves(3);
 
+        FastNoiseLite riverNoise = new FastNoiseLite(seed+100);
+        riverNoise.SetNoiseType(NoiseType.OpenSimplex2);
+        riverNoise.SetFrequency(0.003f);
+        riverNoise.SetFractalType(FractalType.FBm);
+        riverNoise.SetFractalOctaves(3);
+
         List<MapChunk> chunkBuffer = new ArrayList<>();
         
         for(int chunkX = 0; chunkX < size; chunkX += CHUNK_SIZE){
@@ -102,6 +108,9 @@ public class GeneratorService {
                         float normalisedMask = (rawMask + 1) / 2;
                         normalisedMask = (float) Math.pow(normalisedMask, 2.0);
 
+                        float rawRiver = riverNoise.GetNoise(warpedX, warpedY);
+                        boolean isRiver = Math.abs(rawRiver) < 0.025f;
+
                         float finalHeight = (normalisedMask * 0.8f) + (normalisedHeight * 0.2f);
 
                         int tileId;
@@ -123,27 +132,31 @@ public class GeneratorService {
                         } 
                         // 3. MAINLAND
                         else if (finalHeight < 0.85) {
-                            
-                            if (normalisedTemperature < 0.35) {
-                                // --- COLD CLIMATE ---
-                                if (normalisedMoisture < 0.3) tileId = 8;      // Snow desert
-                                else if (normalisedMoisture < 0.6) tileId = 9; // Tundra
-                                else tileId = 10;                              // Taiga
-                                
-                            } else if (normalisedTemperature < 0.65) {
-                                // --- TEMPERATE CLIMATE ---
-                                if (normalisedMoisture < 0.3) tileId = 11;      // Steppe
-                                else if (normalisedMoisture < 0.6) tileId = 12; // Plains
-                                else if (normalisedMoisture < 0.85) tileId = 13;// Mixed Forest
-                                else tileId = 14;                               // Swamps
-                                
+                            if(isRiver){
+                                tileId = 2;
                             } else {
-                                // --- HOT CLIMATE ---
-                                if (normalisedMoisture < 0.25) tileId = 15;     // Desert
-                                else if (normalisedMoisture < 0.5) tileId = 17; // Dry Shrubs
-                                else if (normalisedMoisture < 0.75) tileId = 16;// Savanna
-                                else tileId = 18;                               // Jungle
+                                if (normalisedTemperature < 0.35) {
+                                    // --- COLD CLIMATE ---
+                                    if (normalisedMoisture < 0.3) tileId = 8;      // Snow desert
+                                    else if (normalisedMoisture < 0.6) tileId = 9; // Tundra
+                                    else tileId = 10;                              // Taiga
+                                    
+                                } else if (normalisedTemperature < 0.65) {
+                                    // --- TEMPERATE CLIMATE ---
+                                    if (normalisedMoisture < 0.3) tileId = 11;      // Steppe
+                                    else if (normalisedMoisture < 0.6) tileId = 12; // Plains
+                                    else if (normalisedMoisture < 0.85) tileId = 13;// Mixed Forest
+                                    else tileId = 14;                               // Swamps
+                                    
+                                } else {
+                                    // --- HOT CLIMATE ---
+                                    if (normalisedMoisture < 0.25) tileId = 15;     // Desert
+                                    else if (normalisedMoisture < 0.5) tileId = 17; // Dry Shrubs
+                                    else if (normalisedMoisture < 0.75) tileId = 16;// Savanna
+                                    else tileId = 18;                               // Jungle
+                                }
                             }
+                            
                         } 
                         // 4. MOUNTAINS AND PEAKS
                         else {
