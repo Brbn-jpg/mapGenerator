@@ -44,6 +44,9 @@ const colors: Record<number, string> = {
   20: "#696969", // Bare, gray rocks (Standard)
   21: "#A9A9A9", // Alpine Tundra (Cold, harsh peaks)
   22: "#FFFFFF", // Snowy peak / Glacier
+
+  // --- CITY ---
+  23: "#FF1493",
 };
 
 const generateMap = async () => {
@@ -137,9 +140,17 @@ const drawChunk = (chunk: any) => {
 
   const data = chunk.chunk;
   const imgData = ctx.createImageData(CHUNK_SIZE, CHUNK_SIZE);
+  const cities: { x: number; y: number }[] = [];
 
   for (let i = 0; i < data.length; i++) {
     const tileId = data[i];
+
+    if (tileId === 23) {
+      const lx = i % CHUNK_SIZE;
+      const ly = Math.floor(i / CHUNK_SIZE);
+      cities.push({ x: chunk.chunkX + lx, y: chunk.chunkY + ly });
+    }
+
     const colorHex = colors[tileId] || "#000000";
     const r = parseInt(colorHex.slice(1, 3), 16);
     const g = parseInt(colorHex.slice(3, 5), 16);
@@ -152,6 +163,13 @@ const drawChunk = (chunk: any) => {
   }
 
   ctx.putImageData(imgData, chunk.chunkX, chunk.chunkY);
+
+  if (cities.length > 0) {
+    ctx.fillStyle = colors[23] || "#ffaaff";
+    cities.forEach((city) => {
+      ctx.fillRect(city.x - 2, city.y - 2, 15, 15);
+    });
+  }
 };
 </script>
 

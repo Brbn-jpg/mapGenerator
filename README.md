@@ -99,6 +99,8 @@ The map is procedurally generated using multiple noise layers (height, moisture,
 | 20 | Gray Rocks | `#696969` | Standard high-altitude bare stone |
 | 21 | Alpine Tundra | `#A9A9A9` | Cold, harsh high-altitude vegetation |
 | 22 | Snowy Peak | `#FFFFFF` | Eternal snow and glaciers |
+| **Special** | | | |
+| 23 | City | `#FF1493` | Procedurally placed urban areas (DeepPink) |
 
 ## Technologies Used
 

@@ -3,6 +3,7 @@ package com.mapgen.v1.generator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Random;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,11 +76,20 @@ public class GeneratorService {
         riverNoise.SetFractalType(FractalType.FBm);
         riverNoise.SetFractalOctaves(3);
 
+
         List<MapChunk> chunkBuffer = new ArrayList<>();
         
         for(int chunkX = 0; chunkX < size; chunkX += CHUNK_SIZE){
             for (int chunkY = 0; chunkY < size; chunkY += CHUNK_SIZE){
                 int[] flatChunkMap = new int[CHUNK_SIZE * CHUNK_SIZE];
+
+                Random chunkRandom = new Random(seed + chunkX * 73856L + chunkY * 1920L);
+                int candidateLocalX = chunkRandom.nextInt(CHUNK_SIZE);
+                int candidateLocalY = chunkRandom.nextInt(CHUNK_SIZE);
+
+                boolean attemptCityGen = chunkRandom.nextFloat() < 0.10f;
+                boolean cityBuilt = false;
+
                 for (int x = 0; x < CHUNK_SIZE; x++){
                     for (int y = 0; y < CHUNK_SIZE; y++){
                         int globalX = chunkX + x;
@@ -165,7 +175,51 @@ public class GeneratorService {
                             else if (normalisedMoisture < 0.4) tileId = 19;    // Canyons / Dry Rocks
                             else tileId = 20;                                  // Bare Rocks
                         }
+
+                        if(attemptCityGen && x == candidateLocalX && y == candidateLocalY){
+                            if(finalHeight > 0.45 && finalHeight < 0.85){
+                                boolean foundWater = false;
+
+                                for(int dx = -5; dx <= 5; dx++){
+                                    for(int dy = -5; dy <= 5; dy++){
+                                        float nGlobalX = globalX + dx;
+                                        float nGlobalY = globalY + dy;
+
+                                        float nWarpX = warpNoise.GetNoise(nGlobalX, nGlobalY) * 30f;
+                                        float nWarpY = warpNoise.GetNoise(nGlobalX + 1000, nGlobalY + 1000) * 30f;
+
+                                        float rawRiverNeighbour = riverNoise.GetNoise(nGlobalX + nWarpX, nGlobalY + nWarpY);
+
+                                        if(Math.abs(rawRiverNeighbour) < 0.025f){
+                                            foundWater = true;
+                                            break;
+                                        }
+
+                                    }
+                                    if(foundWater){
+                                        break;
+                                    }
+                                }
+                                boolean isHabitable = normalisedTemperature > 0.35 && normalisedTemperature < 0.8;
+                                if(isHabitable && foundWater){
+                                    tileId = 23;
+                                    cityBuilt = true;
+                                }
+                            }
+                        }
                         flatChunkMap[y * CHUNK_SIZE + x] = tileId;
+                    }
+                }
+                if (cityBuilt) {
+                    for (int cx = -1; cx <= 1; cx++) {
+                        for (int cy = -1; cy <= 1; cy++) {
+                            int drawX = candidateLocalX + cx;
+                            int drawY = candidateLocalY + cy;
+                            
+                            if (drawX >= 0 && drawX < CHUNK_SIZE && drawY >= 0 && drawY < CHUNK_SIZE) {
+                                flatChunkMap[drawY * CHUNK_SIZE + drawX] = 23;
+                            }
+                        }
                     }
                 }
                 MapChunk mapChunk = new MapChunk();
