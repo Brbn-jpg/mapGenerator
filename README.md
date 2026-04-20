@@ -10,7 +10,23 @@ A simple procedural map generator using Spring Boot (Java) for the backend and V
   - REST API for generating and retrieving maps.
 - `frontend/`: Vue 3 + TypeScript + Vite frontend.
   - Interactive UI to set parameters (size, seed).
-  - High-performance `<canvas>` rendering for map visualization.
+  - **High-performance Rendering**: Uses a hybrid approach with a virtual canvas for static land and a main canvas for real-time water animations.
+  - **Stylized Visuals**: Custom "Don't Starve" style water effect with procedural wave patterns and transparency.
+  - **Adaptive Scaling**: Animation details and wave density automatically scale with the map resolution.
+
+## Visual Features
+
+### 1. Stylized Water Animation
+The map features a unique, hand-drawn aesthetic for water inspired by games like *Don't Starve*.
+- **Procedural Waves**: Multiple overlapping sine waves create an organic, non-repeating movement.
+- **Dynamic Transparency**: Water biomes (Abyss, Ocean, Shallow Water) have varying opacity levels, allowing the underlying wave patterns to show through.
+- **Adaptive Step**: The level of detail in the water animation (wave density, stroke width) scales automatically based on the selected map size to ensure consistent visual quality.
+
+### 2. Performance Optimizations
+To handle large map sizes (up to 1000x1000 pixels) smoothly at 60 FPS:
+- **Virtual Canvas**: All static terrain (land, beaches, mountains) is pre-rendered to an off-screen `landCanvas`.
+- **Hybrid Drawing**: In each animation frame, only the water waves are procedurally calculated. The static land is then drawn on top using a single `drawImage` call, significantly reducing CPU/GPU overhead.
+- **Uint32Buffer**: The frontend maintains a global map buffer for instant redraws when toggling UI options like Topology.
 
 ## Prerequisites
 

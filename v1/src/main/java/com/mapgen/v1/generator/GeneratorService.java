@@ -207,7 +207,20 @@ public class GeneratorService {
                                 }
                             }
                         }
-                        flatChunkMap[y * CHUNK_SIZE + x] = tileId;
+
+                        int shadowByte = 128;
+                        if(finalHeight >= 0.4 && tileId != 23){
+                            float neighborNoise = heightmap.GetNoise(warpedX - 1, warpedY - 1);
+                            float neighborHeight = (neighborNoise + 1) / 2;
+                            float slope = normalisedHeight - neighborHeight;
+
+                            float shadowIntensity = Math.max(-1f, Math.min(1f, slope * 15f));
+
+                            shadowByte = (int) ((shadowIntensity + 1f) / 2f + 255);
+                        }
+
+                        int packedData = (shadowByte << 8) | tileId;
+                        flatChunkMap[y * CHUNK_SIZE + x] = packedData;
                     }
                 }
                 if (cityBuilt) {
