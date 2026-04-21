@@ -3,8 +3,8 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import axios from "axios";
 
 const seed = ref(Math.floor(Math.random() * 100000));
-const size = ref(1000);
-const currentRenderSize = ref(1000);
+const size = ref(1000); 
+const currentRenderSize = ref(1000); 
 
 const mapId = ref("");
 const loading = ref(false);
@@ -12,42 +12,38 @@ const showTopology = ref(true);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const CHUNK_SIZE = 32;
 
+// Viewport dimensions
+const VIEWPORT_W = 800;
+const VIEWPORT_H = 600;
+
+// Camera state
+const zoom = ref(0.6);
+const offsetX = ref(VIEWPORT_W / 2 - 300);
+const offsetY = ref(VIEWPORT_H / 2 - 300);
+const isDragging = ref(false);
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+// Animation state
 const animationFrameId = ref<number | null>(null);
 const time = ref(0);
 
+// Global map buffer and city list
 const mapBuffer = ref<Uint32Array | null>(null);
 let imgData: ImageData | null = null;
 let citiesList: { x: number; y: number }[] = [];
 
-// OPTIMIZATION MAGIC: Virtual canvas (invisible in HTML) holding the STATIC LAND
+// Off-screen canvas for pre-rendering static terrain
 const landCanvas = document.createElement("canvas");
 const landCtx = landCanvas.getContext("2d", { willReadFrequently: true });
 
 const colors: Record<number, string> = {
-  0: "#000033",
-  1: "#000080",
-  2: "#1E90FF",
-  3: "#A5F2F3",
-  4: "#FFF8DC",
-  5: "#F4A460",
-  6: "#8B7D6B",
-  7: "#556B2F",
-  8: "#F0F8FF",
-  9: "#BDB76B",
-  10: "#2F4F4F",
-  11: "#C2B280",
-  12: "#7CFC00",
-  13: "#228B22",
-  14: "#2E8B57",
-  15: "#EDC9AF",
-  16: "#E6DAA6",
-  17: "#8FBC8F",
-  18: "#004B49",
-  19: "#8B4513",
-  20: "#696969",
-  21: "#A9A9A9",
-  22: "#FFFFFF",
-  23: "#FF1493",
+  0: "#000033", 1: "#000080", 2: "#1E90FF", 3: "#A5F2F3",
+  4: "#FFF8DC", 5: "#F4A460", 6: "#8B7D6B", 7: "#556B2F",
+  8: "#F0F8FF", 9: "#BDB76B", 10: "#2F4F4F", 11: "#C2B280",
+  12: "#7CFC00", 13: "#228B22", 14: "#2E8B57", 15: "#EDC9AF",
+  16: "#E6DAA6", 17: "#8FBC8F", 18: "#004B49", 19: "#8B4513",
+  20: "#696969", 21: "#A9A9A9", 22: "#FFFFFF", 23: "#FF1493",
 };
 
 const parsedColors = Object.entries(colors).reduce(
@@ -62,66 +58,118 @@ const parsedColors = Object.entries(colors).reduce(
   {} as Record<number, { r: number; g: number; b: number }>,
 );
 
-// === MAIN ANIMATION LOOP (Super lightweight) ===
+// === CAMERA CONTROLS ===
+const onMouseDown = (e: MouseEvent) => {
+  isDragging.value = true;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+};
+
+const onMouseMove = (e: MouseEvent) => {
+  if (!isDragging.value) return;
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  offsetX.value += dx;
+  offsetY.value += dy;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+};
+
+const onMouseUp = () => { isDragging.value = false; };
+
+const onWheel = (e: WheelEvent) => {
+  e.preventDefault();
+  const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+
+  const rect = canvasRef.value?.getBoundingClientRect();
+  if (!rect) return;
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  const worldX = (mouseX - offsetX.value) / zoom.value;
+  const worldY = (mouseY - offsetY.value) / zoom.value;
+
+  zoom.value *= scaleFactor;
+  zoom.value = Math.max(0.1, Math.min(5, zoom.value));
+
+  offsetX.value = mouseX - worldX * zoom.value;
+  offsetY.value = mouseY - worldY * zoom.value;
+};
+
+// === ANIMATION LOOP ===
 const startAnimation = () => {
   if (animationFrameId.value) return;
 
   const animate = () => {
-    time.value += 0.015; // Smooth wave speed
+    time.value += 0.01;
     const ctx = canvasRef.value?.getContext("2d");
 
     if (ctx && mapBuffer.value && mapBuffer.value.length > 0) {
+      // 1. Clear Viewport
+      ctx.fillStyle = "#050a14";
+      ctx.fillRect(0, 0, VIEWPORT_W, VIEWPORT_H);
+
+      ctx.save();
+      // Apply camera transform
+      ctx.translate(offsetX.value, offsetY.value);
+      ctx.scale(zoom.value, zoom.value);
+
       const w = currentRenderSize.value;
-      const scale = w / 1000; // Scaling relative to default 1000 size
-      const step = Math.max(2, 32 * scale); // Wave grid density proportional to map
+
+      // Clip drawing to map bounds
+      ctx.beginPath();
+      ctx.rect(0, 0, w, w);
+      ctx.clip();
+      
+      const scale = w / 1000;
+      const step = Math.max(2, 32 * scale);
       const margin = 40 * scale;
 
-      // 1. DRAWING WATER AT THE VERY BOTTOM
-      ctx.fillStyle = "#143d70";
+      // 2. Render procedural water waves
+      ctx.fillStyle = "#143d70"; 
       ctx.fillRect(0, 0, w, w);
 
-      ctx.lineWidth = Math.max(0.5, 2 * scale); // Scaled brush thickness
-      ctx.strokeStyle = "#0d2c54"; // Comic wave contour
+      ctx.lineWidth = Math.max(0.5, 2 * scale);
+      ctx.strokeStyle = "#0d2c54";
 
-      // Generating overlapping wave bands from top to bottom
       for (let y = -margin; y <= w + margin; y += step) {
         ctx.beginPath();
         ctx.moveTo(0, y + margin);
 
-        for (let x = 0; x <= w + step; x += step) {
-          // Smooth sine waves combining two different frequencies
-          const wave1 =
-            Math.sin(x * (0.03 / scale) + time.value + y * (0.02 / scale)) * 4;
-          const wave2 = Math.cos(x * (0.015 / scale) - time.value * 0.7) * 3;
+        for (let x = 0; x <= w; x += step) {
+          const smoothBase = Math.sin(x * (0.015 / scale) + time.value + y * (0.015 / scale));
+          const sharpPeaks = 1 - Math.abs(Math.sin(x * (0.08 / scale) - time.value * 1.3 + y * (0.2 / scale)));
 
-          // Combine waves and scale amplitude.
-          // IMPORTANT: We SUBTRACT the wave from Y because Canvas Y-axis goes down!
-          const combinedWave = (wave1 + wave2) * scale;
-
-          ctx.lineTo(x, y - combinedWave + margin);
+          const wave = (smoothBase * 3 + sharpPeaks * 8) * scale;
+          const jitterX = Math.sin(x * (1.5 / scale) + y * (2.1 / scale)) * (1.2 * scale);
+          const jitterY = Math.cos(x * (2.3 / scale) - y * (1.7 / scale)) * (1.2 * scale);
+          ctx.lineTo(x + jitterX, y - wave + jitterY + margin);
         }
-        ctx.lineTo(w, y + margin);
-        ctx.lineTo(0, y + margin);
+
+        // Close wave path within map bounds
+        ctx.lineTo(w, y + step + margin);
+        ctx.lineTo(0, y + step + margin);
         ctx.closePath();
 
-        // Alternate color for every second band to enhance texture (posterization effect)
         const isAlternate = Math.round(y / step) % 2 === 0;
         ctx.fillStyle = isAlternate ? "#1a5094" : "#1d5ba8";
         ctx.fill();
-        ctx.stroke(); // Sharp line separating the waves
+        ctx.stroke();
       }
 
-      // 2. OVERLAYING LAND ON TOP OF WATER (Hardware accelerated)
-      // Land has semi-transparent water pixels, allowing waves to show through
+      // 3. Overlay static terrain island
+      // Transparent water pixels on the static layer reveal animated waves below
       ctx.drawImage(landCanvas, 0, 0);
 
-      // 3. CITIES ON THE VERY TOP
+      // 4. Draw cities on top
       if (citiesList.length > 0) {
         ctx.fillStyle = colors[23];
-        citiesList.forEach((city) => {
-          ctx.fillRect(city.x - 2, city.y - 2, 5, 5);
-        });
+        citiesList.forEach((city) =>
+          ctx.fillRect(city.x - 2, city.y - 2, 5, 5),
+        );
       }
+
+      ctx.restore();
     }
     animationFrameId.value = requestAnimationFrame(animate);
   };
@@ -135,7 +183,13 @@ const stopAnimation = () => {
   }
 };
 
-onMounted(() => startAnimation());
+onMounted(() => {
+  if (canvasRef.value) {
+    canvasRef.value.width = VIEWPORT_W;
+    canvasRef.value.height = VIEWPORT_H;
+  }
+  startAnimation();
+});
 onUnmounted(() => stopAnimation());
 
 const generateMap = async () => {
@@ -143,25 +197,11 @@ const generateMap = async () => {
   mapId.value = "";
   currentRenderSize.value = size.value;
 
-  // Reset buffers and adjust dimensions of both canvases
-  mapBuffer.value = new Uint32Array(
-    currentRenderSize.value * currentRenderSize.value,
-  );
+  mapBuffer.value = new Uint32Array(currentRenderSize.value * currentRenderSize.value);
   citiesList = [];
-
   landCanvas.width = currentRenderSize.value;
   landCanvas.height = currentRenderSize.value;
-  imgData = landCtx!.createImageData(
-    currentRenderSize.value,
-    currentRenderSize.value,
-  );
-
-  const ctx = canvasRef.value?.getContext("2d");
-  if (ctx && canvasRef.value) {
-    canvasRef.value.width = currentRenderSize.value;
-    canvasRef.value.height = currentRenderSize.value;
-    ctx.clearRect(0, 0, currentRenderSize.value, currentRenderSize.value);
-  }
+  imgData = landCtx!.createImageData(currentRenderSize.value, currentRenderSize.value);
 
   try {
     const response = await axios.post("http://localhost:8080/generate", {
@@ -181,16 +221,11 @@ const startPolling = async (id: string) => {
   const poll = async () => {
     if (mapId.value !== id) return;
     try {
-      const chunkResponse = await axios.get(
-        `http://localhost:8080/generate/${id}/chunks`,
-        {
+      const chunkResponse = await axios.get(`http://localhost:8080/generate/${id}/chunks`, {
           params: { afterId: lastChunkId || undefined },
-        },
-      );
+      });
       const newChunks = chunkResponse.data || [];
-      const mapResponse = await axios.get(
-        `http://localhost:8080/generate/${id}`,
-      );
+      const mapResponse = await axios.get(`http://localhost:8080/generate/${id}`);
       const status = mapResponse.data.status;
 
       newChunks.forEach((chunk: any) => {
@@ -202,20 +237,15 @@ const startPolling = async (id: string) => {
           const worldX = chunk.chunkX + lx;
           const worldY = chunk.chunkY + ly;
 
-          if (
-            worldX < currentRenderSize.value &&
-            worldY < currentRenderSize.value
-          ) {
+          if (worldX < currentRenderSize.value && worldY < currentRenderSize.value) {
             const globalIndex = worldY * currentRenderSize.value + worldX;
             const packedData = chunk.chunk[i];
-
             mapBuffer.value![globalIndex] = packedData;
             updateSingleStaticPixel(globalIndex, packedData, worldX, worldY);
           }
         }
       });
 
-      // Push changes to the virtual landCanvas once new chunks are processed
       if (newChunks.length > 0 && imgData) {
         landCtx!.putImageData(imgData, 0, 0);
       }
@@ -233,7 +263,8 @@ const startPolling = async (id: string) => {
   poll();
 };
 
-// Renders the "static world" (executed only when a chunk is loaded)
+// Renders a single pixel to the static off-screen layer
+// Water tiles use alpha to blend with animated waves underneath
 const updateSingleStaticPixel = (
   globalIndex: number,
   packedData: number,
@@ -246,65 +277,46 @@ const updateSingleStaticPixel = (
   if (tileId === 23) citiesList.push({ x: worldX, y: worldY });
 
   const baseColor = parsedColors[tileId] || { r: 0, g: 0, b: 0 };
-  let r = baseColor.r;
-  let g = baseColor.g;
-  let b = baseColor.b;
-  let alpha = 255; // Land is fully opaque by default
+  let { r, g, b } = baseColor;
+  let alpha = 255; 
 
-  // MAGIC TRICK: Water transparency!
-  // Different water types have different opacities to tint the waves underneath
-  if (tileId === 0)
-    alpha = 160; // Abyss - very dark, hard to see the bottom
-  else if (tileId === 1)
-    alpha = 100; // Ocean - waves are perfectly visible
-  else if (tileId === 2)
-    alpha = 40; // Shallows (River) - almost transparent water
-  else if (tileId === 3) alpha = 200; // Frozen Ocean - almost solid ice
+  if (tileId === 0) alpha = 160;      // Abyss
+  else if (tileId === 1) alpha = 100; // Ocean
+  else if (tileId === 2) alpha = 40;  // Shallows/Rivers
+  else if (tileId === 3) alpha = 200; // Ice
 
-  // Apply topology shadows ONLY to land (tileId > 3)
+  // Apply topology shadows to land only
   if (showTopology.value && shadowByte !== 128 && tileId > 3) {
     const intensity = Math.abs(shadowByte - 128) / 128;
     if (shadowByte < 128) {
       const a = 1 - intensity * 0.7;
-      r *= a;
-      g *= a;
-      b *= a;
+      r *= a; g *= a; b *= a;
     } else {
       const a = intensity * 0.4;
-      r += (255 - r) * a;
-      g += (255 - g) * a;
-      b += (255 - b) * a;
+      r += (255 - r) * a; g += (255 - g) * a; b += (255 - b) * a;
     }
   }
 
   const pxIndex = globalIndex * 4;
-  const pixels = imgData!.data;
-  pixels[pxIndex] = r;
-  pixels[pxIndex + 1] = g;
-  pixels[pxIndex + 2] = b;
-  pixels[pxIndex + 3] = alpha;
+  imgData!.data[pxIndex] = r;
+  imgData!.data[pxIndex + 1] = g;
+  imgData!.data[pxIndex + 2] = b;
+  imgData!.data[pxIndex + 3] = alpha;
 };
 
+// Fully redraw the static map layer (e.g., when toggling topology)
 const rebuildStaticMap = () => {
   if (!imgData || !mapBuffer.value) return;
   citiesList = [];
-  for (
-    let globalIndex = 0;
-    globalIndex < mapBuffer.value.length;
-    globalIndex++
-  ) {
-    const packedData = mapBuffer.value[globalIndex];
-    if (packedData === 0 && globalIndex !== 0) continue;
-    const worldX = globalIndex % currentRenderSize.value;
-    const worldY = Math.floor(globalIndex / currentRenderSize.value);
-    updateSingleStaticPixel(globalIndex, packedData, worldX, worldY);
+  for (let i = 0; i < mapBuffer.value.length; i++) {
+    const packedData = mapBuffer.value[i];
+    if (packedData === 0 && i !== 0) continue;
+    updateSingleStaticPixel(i, packedData, i % currentRenderSize.value, Math.floor(i / currentRenderSize.value));
   }
-  landCtx!.putImageData(imgData, 0, 0); // Update the Land layer
+  landCtx!.putImageData(imgData, 0, 0); 
 };
 
-watch(showTopology, () => {
-  rebuildStaticMap();
-});
+watch(showTopology, () => rebuildStaticMap());
 </script>
 
 <template>
@@ -329,16 +341,22 @@ watch(showTopology, () => {
     </div>
 
     <div v-if="mapId" class="map-info">
-      <p>Map ID: {{ mapId }}</p>
+      <p>Map ID: {{ mapId }} (Use Mouse to Drag & Wheel to Zoom)</p>
     </div>
 
     <div class="canvas-container">
       <canvas
         ref="canvasRef"
+        @mousedown="onMouseDown"
+        @mousemove="onMouseMove"
+        @mouseup="onMouseUp"
+        @mouseleave="onMouseUp"
+        @wheel="onWheel"
         :style="{
-          width: '500px',
-          height: '500px',
+          width: VIEWPORT_W + 'px',
+          height: VIEWPORT_H + 'px',
           imageRendering: 'pixelated',
+          cursor: isDragging ? 'grabbing' : 'grab',
         }"
       ></canvas>
     </div>
@@ -403,8 +421,11 @@ button:disabled {
 
 .canvas-container {
   border: 2px solid #333;
-  background: #eee;
+  background: #050a14;
   display: flex;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 canvas {

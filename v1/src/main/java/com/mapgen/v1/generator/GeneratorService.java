@@ -45,7 +45,7 @@ public class GeneratorService {
 
         FastNoiseLite heightmap = new FastNoiseLite(seed);
         heightmap.SetNoiseType(NoiseType.ValueCubic);
-        heightmap.SetFrequency(0.005f);
+        heightmap.SetFrequency(0.009f);
         heightmap.SetFractalType(FractalType.FBm);
         heightmap.SetFractalWeightedStrength(0.5f);
         heightmap.SetFractalOctaves(5);
@@ -121,7 +121,7 @@ public class GeneratorService {
                         float rawRiver = riverNoise.GetNoise(warpedX, warpedY);
                         boolean isRiver = Math.abs(rawRiver) < 0.025f;
 
-                        float finalHeight = (normalisedMask * 0.8f) + (normalisedHeight * 0.2f);
+                        float finalHeight = (normalisedMask * 0.7f) + (normalisedHeight * 0.2f);
 
                         int tileId;
 
@@ -141,7 +141,7 @@ public class GeneratorService {
                             else tileId = 5;                                                              // Standard beach
                         } 
                         // 3. MAINLAND
-                        else if (finalHeight < 0.85) {
+                        else if (finalHeight < 0.78) {
                             if(isRiver){
                                 tileId = 2;
                             } else {
