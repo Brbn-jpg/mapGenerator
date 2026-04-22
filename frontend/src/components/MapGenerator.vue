@@ -24,6 +24,23 @@ const isDragging = ref(false);
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// === DRAWING STATE ===
+const isDrawMode = ref(false); 
+const drawColor = ref("#ff3366");
+const drawnPaths = ref<{ points: { x: number; y: number }[]; color: string }[]>([]); 
+let currentPath: { x: number; y: number }[] = []; 
+
+const getWorldCoords = (clientX: number, clientY: number) => {
+  const rect = canvasRef.value?.getBoundingClientRect();
+  if (!rect) return { x: 0, y: 0 };
+  const mouseX = clientX - rect.left;
+  const mouseY = clientY - rect.top;
+  return {
+    x: (mouseX - offsetX.value) / zoom.value,
+    y: (mouseY - offsetY.value) / zoom.value,
+  };
+};
+
 // Animation state
 const animationFrameId = ref<number | null>(null);
 const time = ref(0);
@@ -58,24 +75,43 @@ const parsedColors = Object.entries(colors).reduce(
   {} as Record<number, { r: number; g: number; b: number }>,
 );
 
-// === CAMERA CONTROLS ===
+// === CAMERA & DRAWING CONTROLS ===
 const onMouseDown = (e: MouseEvent) => {
   isDragging.value = true;
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
+  if (isDrawMode.value) {
+    currentPath = [getWorldCoords(e.clientX, e.clientY)];
+  } else {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  }
 };
 
 const onMouseMove = (e: MouseEvent) => {
   if (!isDragging.value) return;
-  const dx = e.clientX - lastMouseX;
-  const dy = e.clientY - lastMouseY;
-  offsetX.value += dx;
-  offsetY.value += dy;
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
+
+  if (isDrawMode.value) {
+    currentPath.push(getWorldCoords(e.clientX, e.clientY));
+  } else {
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    offsetX.value += dx;
+    offsetY.value += dy;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  }
 };
 
-const onMouseUp = () => { isDragging.value = false; };
+const onMouseUp = () => {
+  if (isDragging.value && isDrawMode.value && currentPath.length > 0) {
+    drawnPaths.value.push({ points: [...currentPath], color: drawColor.value });
+    currentPath = [];
+  }
+  isDragging.value = false;
+};
+
+const clearDrawing = () => {
+  drawnPaths.value = [];
+};
 
 const onWheel = (e: WheelEvent) => {
   e.preventDefault();
@@ -158,7 +194,6 @@ const startAnimation = () => {
       }
 
       // 3. Overlay static terrain island
-      // Transparent water pixels on the static layer reveal animated waves below
       ctx.drawImage(landCanvas, 0, 0);
 
       // 4. Draw cities on top
@@ -167,6 +202,32 @@ const startAnimation = () => {
         citiesList.forEach((city) =>
           ctx.fillRect(city.x - 2, city.y - 2, 5, 5),
         );
+      }
+
+      // 5. DRAW USER PATHS
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const drawPath = (points: { x: number; y: number }[]) => {
+        if (points.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+      };
+
+      drawnPaths.value.forEach((item) => {
+        ctx.lineWidth = 4 / zoom.value;
+        ctx.strokeStyle = item.color;
+        drawPath(item.points);
+      });
+
+      if (currentPath.length > 0) {
+        ctx.lineWidth = 4 / zoom.value;
+        ctx.strokeStyle = drawColor.value;
+        drawPath(currentPath);
       }
 
       ctx.restore();
@@ -335,6 +396,18 @@ watch(showTopology, () => rebuildStaticMap());
         <label>Topology:</label>
         <input v-model="showTopology" type="checkbox" />
       </div>
+      <div class="input-group" v-if="isDrawMode">
+        <label>Color:</label>
+        <input v-model="drawColor" type="color" />
+      </div>
+      <button 
+        @click="isDrawMode = !isDrawMode" 
+        :style="{ backgroundColor: isDrawMode ? '#ff3366' : '#2196F3' }">
+        {{ isDrawMode ? 'Draw Mode: ON' : 'Drag Mode' }}
+      </button>
+      <button @click="clearDrawing" style="background-color: #f44336;" v-if="drawnPaths.length > 0">
+        Clear
+      </button>
       <button @click="generateMap" :disabled="loading">
         {{ loading ? "Generating..." : "Generate New Map" }}
       </button>
@@ -356,7 +429,7 @@ watch(showTopology, () => rebuildStaticMap());
           width: VIEWPORT_W + 'px',
           height: VIEWPORT_H + 'px',
           imageRendering: 'pixelated',
-          cursor: isDragging ? 'grabbing' : 'grab',
+          cursor: isDrawMode ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'),
         }"
       ></canvas>
     </div>
