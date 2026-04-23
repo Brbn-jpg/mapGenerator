@@ -44,8 +44,8 @@ public class GeneratorService {
         Integer seed = map.getSeed();
 
         FastNoiseLite heightmap = new FastNoiseLite(seed);
-        heightmap.SetNoiseType(NoiseType.ValueCubic);
-        heightmap.SetFrequency(0.009f);
+        heightmap.SetNoiseType(NoiseType.OpenSimplex2);
+        heightmap.SetFrequency(0.003f);
         heightmap.SetFractalType(FractalType.FBm);
         heightmap.SetFractalWeightedStrength(0.5f);
         heightmap.SetFractalOctaves(5);
@@ -61,8 +61,8 @@ public class GeneratorService {
         temperature.SetFrequency(0.0001f);
 
         FastNoiseLite continentMask = new FastNoiseLite(seed-1000);
-        continentMask.SetNoiseType(NoiseType.ValueCubic);
-        continentMask.SetFrequency(0.001f);
+        continentMask.SetNoiseType(NoiseType.OpenSimplex2);
+        continentMask.SetFrequency(0.0004f);
 
         FastNoiseLite warpNoise = new FastNoiseLite(seed+2000);
         warpNoise.SetNoiseType(NoiseType.ValueCubic);
@@ -116,32 +116,32 @@ public class GeneratorService {
 
                         float rawMask = continentMask.GetNoise(warpedX, warpedY);
                         float normalisedMask = (rawMask + 1) / 2;
-                        normalisedMask = (float) Math.pow(normalisedMask, 2.0);
+                        normalisedMask = (float) Math.pow(normalisedMask, 1.2);
 
                         float rawRiver = riverNoise.GetNoise(warpedX, warpedY);
                         boolean isRiver = Math.abs(rawRiver) < 0.025f;
 
-                        float finalHeight = (normalisedMask * 0.7f) + (normalisedHeight * 0.2f);
+                        float finalHeight = (normalisedMask * 0.65f) + (normalisedMask * normalisedHeight * 0.35f);
 
                         int tileId;
 
                         // 1. WATER ZONE
                         if (finalHeight < 0.15) {
                             tileId = 0; // Abyss
-                        } else if (finalHeight < 0.40) {
+                        } else if (finalHeight < 0.35) {
                             if (normalisedTemperature < 0.2) tileId = 3;   // Frozen Ocean
                             else if (normalisedMoisture > 0.6) tileId = 2; // Shallow water
                             else tileId = 1;                               // Standard Ocean
                         } 
                         // 2. COAST ZONE
-                        else if (finalHeight < 0.45) {
+                        else if (finalHeight < 0.4) {
                             if (normalisedTemperature < 0.3) tileId = 6;                                  // Rocky beach (Cold)
                             else if (normalisedTemperature > 0.7 && normalisedMoisture > 0.8) tileId = 7; // Mangroves
                             else if (normalisedMoisture < 0.3) tileId = 4;                                // Light sand
                             else tileId = 5;                                                              // Standard beach
                         } 
                         // 3. MAINLAND
-                        else if (finalHeight < 0.78) {
+                        else if (finalHeight < 0.70) {
                             if(isRiver){
                                 tileId = 2;
                             } else {
@@ -216,7 +216,7 @@ public class GeneratorService {
 
                             float shadowIntensity = Math.max(-1f, Math.min(1f, slope * 15f));
 
-                            shadowByte = (int) ((shadowIntensity + 1f) / 2f + 255);
+                            shadowByte = (int) ((shadowIntensity + 1f) / 2f + 255f);
                         }
 
                         int packedData = (shadowByte << 8) | tileId;
