@@ -3,8 +3,8 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import axios from "axios";
 
 const seed = ref(Math.floor(Math.random() * 100000));
-const size = ref(1000); 
-const currentRenderSize = ref(1000); 
+const size = ref(1000);
+const currentRenderSize = ref(1000);
 
 const mapId = ref("");
 const loading = ref(false);
@@ -25,10 +25,12 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 
 // === DRAWING STATE ===
-const isDrawMode = ref(false); 
+const isDrawMode = ref(false);
 const drawColor = ref("#ff3366");
-const drawnPaths = ref<{ points: { x: number; y: number }[]; color: string }[]>([]); 
-let currentPath: { x: number; y: number }[] = []; 
+const drawnPaths = ref<{ points: { x: number; y: number }[]; color: string }[]>(
+  [],
+);
+let currentPath: { x: number; y: number }[] = [];
 
 const getWorldCoords = (clientX: number, clientY: number) => {
   const rect = canvasRef.value?.getBoundingClientRect();
@@ -55,12 +57,31 @@ const landCanvas = document.createElement("canvas");
 const landCtx = landCanvas.getContext("2d", { willReadFrequently: true });
 
 const colors: Record<number, string> = {
-  0: "#000033", 1: "#000080", 2: "#1E90FF", 3: "#A5F2F3",
-  4: "#FFF8DC", 5: "#F4A460", 6: "#8B7D6B", 7: "#556B2F",
-  8: "#F0F8FF", 9: "#BDB76B", 10: "#2F4F4F", 11: "#C2B280",
-  12: "#7CFC00", 13: "#228B22", 14: "#2E8B57", 15: "#EDC9AF",
-  16: "#E6DAA6", 17: "#8FBC8F", 18: "#004B49", 19: "#8B4513",
-  20: "#696969", 21: "#A9A9A9", 22: "#FFFFFF", 23: "#FF1493",
+  0: "#000033",
+  1: "#000080",
+  2: "#1E90FF",
+  3: "#A5F2F3",
+  4: "#FFF8DC",
+  5: "#F4A460",
+  6: "#8B7D6B",
+  7: "#556B2F",
+  8: "#F0F8FF",
+  9: "#BDB76B",
+  10: "#2F4F4F",
+  11: "#C2B280",
+  12: "#7CFC00",
+  13: "#228B22",
+  14: "#2E8B57",
+  15: "#EDC9AF",
+  16: "#E6DAA6",
+  17: "#8FBC8F",
+  18: "#004B49",
+  19: "#8B4513",
+  20: "#696969",
+  21: "#A9A9A9",
+  22: "#FFFFFF",
+  24: "#C85A17",
+  25: "#E3C565",
 };
 
 const parsedColors = Object.entries(colors).reduce(
@@ -156,13 +177,13 @@ const startAnimation = () => {
       ctx.beginPath();
       ctx.rect(0, 0, w, w);
       ctx.clip();
-      
+
       const scale = w / 1000;
       const step = Math.max(2, 32 * scale);
       const margin = 40 * scale;
 
       // 2. Render procedural water waves
-      ctx.fillStyle = "#143d70"; 
+      ctx.fillStyle = "#143d70";
       ctx.fillRect(0, 0, w, w);
 
       ctx.lineWidth = Math.max(0.5, 2 * scale);
@@ -173,12 +194,22 @@ const startAnimation = () => {
         ctx.moveTo(0, y + margin);
 
         for (let x = 0; x <= w; x += step) {
-          const smoothBase = Math.sin(x * (0.015 / scale) + time.value + y * (0.015 / scale));
-          const sharpPeaks = 1 - Math.abs(Math.sin(x * (0.08 / scale) - time.value * 1.3 + y * (0.2 / scale)));
+          const smoothBase = Math.sin(
+            x * (0.015 / scale) + time.value + y * (0.015 / scale),
+          );
+          const sharpPeaks =
+            1 -
+            Math.abs(
+              Math.sin(
+                x * (0.08 / scale) - time.value * 1.3 + y * (0.2 / scale),
+              ),
+            );
 
           const wave = (smoothBase * 3 + sharpPeaks * 8) * scale;
-          const jitterX = Math.sin(x * (1.5 / scale) + y * (2.1 / scale)) * (1.2 * scale);
-          const jitterY = Math.cos(x * (2.3 / scale) - y * (1.7 / scale)) * (1.2 * scale);
+          const jitterX =
+            Math.sin(x * (1.5 / scale) + y * (2.1 / scale)) * (1.2 * scale);
+          const jitterY =
+            Math.cos(x * (2.3 / scale) - y * (1.7 / scale)) * (1.2 * scale);
           ctx.lineTo(x + jitterX, y - wave + jitterY + margin);
         }
 
@@ -198,10 +229,58 @@ const startAnimation = () => {
 
       // 4. Draw cities on top
       if (citiesList.length > 0) {
-        ctx.fillStyle = colors[23];
-        citiesList.forEach((city) =>
-          ctx.fillRect(city.x - 2, city.y - 2, 5, 5),
-        );
+        citiesList.forEach((city) => {
+          const x = city.x;
+          const y = city.y;
+          // Use hash to decide if we draw a building and which type
+          // This prevents every single pixel of a 3x3 city block from having a building
+          const hash =
+            (Math.abs(Math.sin(x * 12.9898 + y * 78.233)) * 43758.5453) % 1;
+
+          if (hash < 0.3) return; // Empty space/pavement
+
+          ctx.lineWidth = Math.max(0.5, 1 / zoom.value);
+          ctx.strokeStyle = "#000000";
+
+          if (hash > 0.75) {
+            // Skyscraper
+            const h = 8 + Math.floor(hash * 8);
+            const w = 5;
+            // Concrete Wall
+            ctx.fillStyle = "#a9a9a9";
+            ctx.fillRect(x - w / 2, y - h + 2, w, h);
+            ctx.strokeRect(x - w / 2, y - h + 2, w, h);
+            // Windows
+            ctx.fillStyle = "#ffff00";
+            for (let row = 0; row < Math.floor(h / 4); row++) {
+              ctx.fillRect(x - 1.5, y - h + 4 + row * 4, 1, 1);
+              ctx.fillRect(x + 0.5, y - h + 4 + row * 4, 1, 1);
+            }
+          } else {
+            // House
+            const w = 5;
+            const h = 4;
+            // Wall
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(x - w / 2, y - h / 2 + 1, w, h);
+            ctx.strokeRect(x - w / 2, y - h / 2 + 1, w, h);
+            // Roof (Brick)
+            ctx.fillStyle = "#8b0000";
+            ctx.beginPath();
+            ctx.moveTo(x - w / 2 - 1, y - h / 2 + 1);
+            ctx.lineTo(x, y - h / 2 - 2);
+            ctx.lineTo(x + w / 2 + 1, y - h / 2 + 1);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // Door
+            ctx.fillStyle = "#5d4037";
+            ctx.fillRect(x, y, 1.5, 2.5);
+            // Small Window
+            ctx.fillStyle = "#add8e6";
+            ctx.fillRect(x - 1.5, y - 0.5, 1, 1);
+          }
+        });
       }
 
       // 5. DRAW USER PATHS
@@ -258,11 +337,16 @@ const generateMap = async () => {
   mapId.value = "";
   currentRenderSize.value = size.value;
 
-  mapBuffer.value = new Uint32Array(currentRenderSize.value * currentRenderSize.value);
+  mapBuffer.value = new Uint32Array(
+    currentRenderSize.value * currentRenderSize.value,
+  );
   citiesList = [];
   landCanvas.width = currentRenderSize.value;
   landCanvas.height = currentRenderSize.value;
-  imgData = landCtx!.createImageData(currentRenderSize.value, currentRenderSize.value);
+  imgData = landCtx!.createImageData(
+    currentRenderSize.value,
+    currentRenderSize.value,
+  );
 
   try {
     const response = await axios.post("http://localhost:8080/generate", {
@@ -282,11 +366,16 @@ const startPolling = async (id: string) => {
   const poll = async () => {
     if (mapId.value !== id) return;
     try {
-      const chunkResponse = await axios.get(`http://localhost:8080/generate/${id}/chunks`, {
+      const chunkResponse = await axios.get(
+        `http://localhost:8080/generate/${id}/chunks`,
+        {
           params: { afterId: lastChunkId || undefined },
-      });
+        },
+      );
       const newChunks = chunkResponse.data || [];
-      const mapResponse = await axios.get(`http://localhost:8080/generate/${id}`);
+      const mapResponse = await axios.get(
+        `http://localhost:8080/generate/${id}`,
+      );
       const status = mapResponse.data.status;
 
       newChunks.forEach((chunk: any) => {
@@ -298,7 +387,10 @@ const startPolling = async (id: string) => {
           const worldX = chunk.chunkX + lx;
           const worldY = chunk.chunkY + ly;
 
-          if (worldX < currentRenderSize.value && worldY < currentRenderSize.value) {
+          if (
+            worldX < currentRenderSize.value &&
+            worldY < currentRenderSize.value
+          ) {
             const globalIndex = worldY * currentRenderSize.value + worldX;
             const packedData = chunk.chunk[i];
             mapBuffer.value![globalIndex] = packedData;
@@ -324,6 +416,51 @@ const startPolling = async (id: string) => {
   poll();
 };
 
+const getProceduralTexture = (tileId: number, x: number, y: number) => {
+  // Simple deterministic pseudo-random hash
+  const hash = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+  const rand = Math.abs(hash);
+
+  switch (tileId) {
+    case 4: // Light sand
+    case 5: // Beach
+    case 8: // Snow desert
+    case 11: // Steppe
+    case 15: // Desert
+      return 0.95 + rand * 0.1; // Fine grain
+
+    case 7: // Mangroves
+    case 10: // Taiga
+    case 13: // Mixed Forest
+    case 14: // Swamps
+    case 16: // Savanna
+    case 17: // Dry Shrubs
+    case 18: // Jungle
+      return rand < 0.25 ? 0.82 : 1.0; // Scattered tufts/darker patches
+
+    case 6: // Rocky beach
+    case 19: // Canyons
+    case 20: // Bare Rocks
+    case 21: // Alpine Tundra
+    case 22: // Eternal Snow
+    case 24: // Badlands
+      const layer = Math.sin(y * 1.5 + x * 0.2);
+      return layer > 0.4 ? 0.92 : 1.08; // Stratified ridges
+
+    case 25: // Dunes
+      const ripple = Math.sin(x * 0.4 + Math.sin(y * 0.3) * 2);
+      return ripple > 0 ? 1.1 : 0.9; // Wavy sand ripples
+
+    case 9: // Tundra
+    case 12: // Plains
+      const patch = Math.sin(x * 0.15) * Math.cos(y * 0.15);
+      return 1.0 + patch * 0.06; // Soft organic patches
+
+    default:
+      return 1.0;
+  }
+};
+
 // Renders a single pixel to the static off-screen layer
 // Water tiles use alpha to blend with animated waves underneath
 const updateSingleStaticPixel = (
@@ -335,26 +472,44 @@ const updateSingleStaticPixel = (
   const tileId = packedData & 0xff;
   const shadowByte = (packedData >> 8) & 0xff;
 
-  if (tileId === 23) citiesList.push({ x: worldX, y: worldY });
-
   const baseColor = parsedColors[tileId] || { r: 0, g: 0, b: 0 };
   let { r, g, b } = baseColor;
-  let alpha = 255; 
+  let alpha = 255;
 
-  if (tileId === 0) alpha = 160;      // Abyss
-  else if (tileId === 1) alpha = 100; // Ocean
-  else if (tileId === 2) alpha = 40;  // Shallows/Rivers
-  else if (tileId === 3) alpha = 200; // Ice
+  if (tileId === 23) {
+    citiesList.push({ x: worldX, y: worldY });
+    alpha = 0; // Hide marker color, city is drawn in animation loop
+  } else if (tileId === 0) {
+    alpha = 160; // Abyss
+  } else if (tileId === 1) {
+    alpha = 100; // Ocean
+  } else if (tileId === 2) {
+    alpha = 40; // Shallows/Rivers
+  } else if (tileId === 3) {
+    alpha = 200; // Ice
+  }
+
+  // Apply procedural texture to land
+  if (tileId > 3 && tileId !== 23) {
+    const tex = getProceduralTexture(tileId, worldX, worldY);
+    r = Math.max(0, Math.min(255, r * tex));
+    g = Math.max(0, Math.min(255, g * tex));
+    b = Math.max(0, Math.min(255, b * tex));
+  }
 
   // Apply topology shadows to land only
   if (showTopology.value && shadowByte !== 128 && tileId > 3) {
     const intensity = Math.abs(shadowByte - 128) / 128;
     if (shadowByte < 128) {
       const a = 1 - intensity * 0.7;
-      r *= a; g *= a; b *= a;
+      r *= a;
+      g *= a;
+      b *= a;
     } else {
       const a = intensity * 0.4;
-      r += (255 - r) * a; g += (255 - g) * a; b += (255 - b) * a;
+      r += (255 - r) * a;
+      g += (255 - g) * a;
+      b += (255 - b) * a;
     }
   }
 
@@ -372,9 +527,14 @@ const rebuildStaticMap = () => {
   for (let i = 0; i < mapBuffer.value.length; i++) {
     const packedData = mapBuffer.value[i];
     if (packedData === 0 && i !== 0) continue;
-    updateSingleStaticPixel(i, packedData, i % currentRenderSize.value, Math.floor(i / currentRenderSize.value));
+    updateSingleStaticPixel(
+      i,
+      packedData,
+      i % currentRenderSize.value,
+      Math.floor(i / currentRenderSize.value),
+    );
   }
-  landCtx!.putImageData(imgData, 0, 0); 
+  landCtx!.putImageData(imgData, 0, 0);
 };
 
 watch(showTopology, () => rebuildStaticMap());
@@ -400,12 +560,17 @@ watch(showTopology, () => rebuildStaticMap());
         <label>Color:</label>
         <input v-model="drawColor" type="color" />
       </div>
-      <button 
-        @click="isDrawMode = !isDrawMode" 
-        :style="{ backgroundColor: isDrawMode ? '#ff3366' : '#2196F3' }">
-        {{ isDrawMode ? 'Draw Mode: ON' : 'Drag Mode' }}
+      <button
+        @click="isDrawMode = !isDrawMode"
+        :style="{ backgroundColor: isDrawMode ? '#ff3366' : '#2196F3' }"
+      >
+        {{ isDrawMode ? "Draw Mode: ON" : "Drag Mode" }}
       </button>
-      <button @click="clearDrawing" style="background-color: #f44336;" v-if="drawnPaths.length > 0">
+      <button
+        @click="clearDrawing"
+        style="background-color: #f44336"
+        v-if="drawnPaths.length > 0"
+      >
         Clear
       </button>
       <button @click="generateMap" :disabled="loading">
@@ -429,7 +594,7 @@ watch(showTopology, () => rebuildStaticMap());
           width: VIEWPORT_W + 'px',
           height: VIEWPORT_H + 'px',
           imageRendering: 'pixelated',
-          cursor: isDrawMode ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'),
+          cursor: isDrawMode ? 'crosshair' : isDragging ? 'grabbing' : 'grab',
         }"
       ></canvas>
     </div>

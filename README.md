@@ -27,13 +27,32 @@ The map features a unique, hand-drawn aesthetic for water inspired by games like
 - **Procedural Waves**: Multiple overlapping sine waves create an organic, non-repeating movement.
 - **Dynamic Transparency**: Water biomes (Abyss, Ocean, Shallow Water) have varying opacity levels, allowing the underlying wave patterns to show through.
 
-### 3. Performance Optimizations
+### 3. Procedural Map Textures
+Each land biome now features a unique procedural texture generated in real-time on the client:
+- **Grain**: Fine detail on deserts, beaches, and steppes.
+- **Tufts**: Scattered dark patches representing dense vegetation in forests and jungles.
+- **Ridges**: Stratified rock layers on mountains, canyons, and badlands.
+- **Ripples**: Wavy patterns specifically for sand dunes.
+- **Patches**: Soft organic variations on plains and tundra.
+
+### 4. Topology & Shadows
+The map includes a dynamic shading system based on height gradients:
+- **Terrain Shading**: Slopes are automatically darkened or lightened to create a 3D sense of depth.
+- **Toggleable Overlay**: Topology shadows can be toggled via the UI to view pure biome colors.
+
+### 5. Stylized Building Rendering
+Cities are no longer simple colored blocks. Each city tile procedurally renders a unique building based on its coordinates:
+- **Houses**: Feature white walls, brick-red roofs, black outlines, and tiny doors/windows.
+- **Skyscrapers**: Concrete-colored towers with randomized heights, antennas, and glowing yellow windows.
+- **Organic Layout**: Buildings are procedurally spaced within city clusters to create a more natural urban feel.
+
+### 6. Performance Optimizations
 To handle large map sizes smoothly:
-- **Virtual Canvas**: All static terrain is pre-rendered to an off-screen `landCanvas`.
+- **Virtual Canvas**: All static terrain and procedural textures are pre-rendered to an off-screen `landCanvas`.
 - **Hybrid Drawing**: In each frame, only the water waves are procedurally calculated. The static land is then drawn on top using a single `drawImage` call.
 
 ## Biomes & Generation
-The map is procedurally generated using multiple noise layers. Recent updates have **increased the frequency of mountain ranges** and high-altitude terrain for more dramatic landscapes.
+The map is procedurally generated using multiple noise layers. Recent updates have **improved climate distribution**, ensuring a natural transition between cold, temperate, and hot zones. This fix allows for the correct generation of rare hot biomes like **Badlands** and **Dunes**.
 
 
 - **Java 17+**
@@ -121,8 +140,11 @@ The map is procedurally generated using multiple noise layers (height, moisture,
 | 20 | Gray Rocks | `#696969` | Standard high-altitude bare stone |
 | 21 | Alpine Tundra | `#A9A9A9` | Cold, harsh high-altitude vegetation |
 | 22 | Snowy Peak | `#FFFFFF` | Eternal snow and glaciers |
+| **New Biomes (Hot)** | | | |
+| 24 | Badlands | `#C85A17` | Reddish-brown stratified rock formations |
+| 25 | Sand Dunes | `#E3C565` | Vast golden deserts with wavy ripples |
 | **Special** | | | |
-| 23 | City | `#FF1493` | Procedurally placed urban areas (DeepPink) |
+| 23 | City | *Rendered* | Procedurally generated urban areas with houses and skyscrapers |
 
 ## Technologies Used
 

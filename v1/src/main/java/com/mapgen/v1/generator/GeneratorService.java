@@ -113,6 +113,9 @@ public class GeneratorService {
 
                         float rawTemperatureNoise = temperature.GetNoise(warpedX, warpedY);
                         float normalisedTemperature = (rawTemperatureNoise + 1) / 2;
+                        float tempBias = 0.2f;
+                        normalisedTemperature += tempBias;
+                        normalisedTemperature = Math.max(0.0f, Math.min(1.0f, normalisedTemperature));
 
                         float rawMask = continentMask.GetNoise(warpedX, warpedY);
                         float normalisedMask = (rawMask + 1) / 2;
@@ -126,12 +129,17 @@ public class GeneratorService {
                         int tileId;
 
                         // 1. WATER ZONE
-                        if (finalHeight < 0.15) {
-                            tileId = 0; // Abyss
-                        } else if (finalHeight < 0.35) {
-                            if (normalisedTemperature < 0.2) tileId = 3;   // Frozen Ocean
-                            else if (normalisedMoisture > 0.6) tileId = 2; // Shallow water
-                            else tileId = 1;                               // Standard Ocean
+                        if (finalHeight < 0.35) {
+                            if (normalisedTemperature < 0.2) {
+                                tileId = 3; // Frozen Ocean
+                            } 
+                            else if (finalHeight < 0.15) {
+                                tileId = 0; // Abyss
+                            } 
+                            else {
+                                if (normalisedMoisture > 0.6) tileId = 2; // Shallow water
+                                else tileId = 1;                          // Standard Ocean
+                            }
                         } 
                         // 2. COAST ZONE
                         else if (finalHeight < 0.4) {
@@ -160,9 +168,13 @@ public class GeneratorService {
                                     
                                 } else {
                                     // --- HOT CLIMATE ---
-                                    if (normalisedMoisture < 0.25) tileId = 15;     // Desert
-                                    else if (normalisedMoisture < 0.5) tileId = 17; // Dry Shrubs
-                                    else if (normalisedMoisture < 0.75) tileId = 16;// Savanna
+                                    if (normalisedMoisture < 0.25) {
+                                        if (finalHeight > 0.55) tileId = 24; // Badlands
+                                        else tileId = 25;                    // Dunes
+                                    }
+                                    else if (normalisedMoisture < 0.4) tileId = 15; // Desert
+                                    else if (normalisedMoisture < 0.6) tileId = 17; // Dry Shrubs
+                                    else if (normalisedMoisture < 0.8) tileId = 16;// Savanna
                                     else tileId = 18;                               // Jungle
                                 }
                             }
@@ -216,7 +228,7 @@ public class GeneratorService {
 
                             float shadowIntensity = Math.max(-1f, Math.min(1f, slope * 15f));
 
-                            shadowByte = (int) ((shadowIntensity + 1f) / 2f + 255f);
+                            shadowByte = (int) (((shadowIntensity + 1f) / 2f) * 255f);
                         }
 
                         int packedData = (shadowByte << 8) | tileId;
