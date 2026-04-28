@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import axios from "axios";
 
 const seed = ref(Math.floor(Math.random() * 100000));
 const size = ref(1000);
 const currentRenderSize = ref(1000);
+
+const temp = ref(0.2);
+const moisture = ref(0.0);
+const continent = ref(1.2);
+const city = ref(0.1);
 
 const mapId = ref("");
 const loading = ref(false);
@@ -13,8 +18,8 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const CHUNK_SIZE = 32;
 
 // Viewport dimensions
-const VIEWPORT_W = 800;
-const VIEWPORT_H = 600;
+const VIEWPORT_W = 1000;
+const VIEWPORT_H = 800;
 
 // Camera state
 const zoom = ref(0.6);
@@ -51,6 +56,7 @@ const time = ref(0);
 const mapBuffer = ref<Uint32Array | null>(null);
 let imgData: ImageData | null = null;
 let citiesList: { x: number; y: number }[] = [];
+let landDirty = false;
 
 // Off-screen canvas for pre-rendering static terrain
 const landCanvas = document.createElement("canvas");
@@ -84,6 +90,32 @@ const colors: Record<number, string> = {
   25: "#E3C565",
 };
 
+const biomeNames: Record<number, string> = {
+  0: "Abyss", 1: "Ocean", 2: "Shallow Water", 3: "Frozen Ocean",
+  4: "Light Sand", 5: "Beach", 6: "Rocky Beach", 7: "Mangroves",
+  8: "Snow Desert", 9: "Tundra", 10: "Taiga", 11: "Steppe",
+  12: "Plains", 13: "Mixed Forest", 14: "Swamps", 15: "Desert",
+  16: "Savanna", 17: "Dry Shrubs", 18: "Jungle", 19: "Canyons",
+  20: "Bare Rocks", 21: "Alpine Tundra", 22: "Eternal Snow",
+  23: "City", 24: "Badlands", 25: "Dunes",
+};
+
+const hoveredBiome = ref<string | null>(null);
+const hoveredCoords = ref<{ x: number; y: number } | null>(null);
+
+const receivedChunks = ref(0);
+const totalChunks = ref(0);
+const progress = computed(() =>
+  totalChunks.value > 0 ? Math.round((receivedChunks.value / totalChunks.value) * 100) : 0,
+);
+
+const showLegend = ref(false);
+const highlightedBiome = ref<number | null>(null);
+
+const toggleHighlight = (id: number) => {
+  highlightedBiome.value = highlightedBiome.value === id ? null : id;
+};
+
 const parsedColors = Object.entries(colors).reduce(
   (acc, [id, hex]) => {
     acc[Number(id)] = {
@@ -108,6 +140,18 @@ const onMouseDown = (e: MouseEvent) => {
 };
 
 const onMouseMove = (e: MouseEvent) => {
+  const { x, y } = getWorldCoords(e.clientX, e.clientY);
+  const wx = Math.floor(x);
+  const wy = Math.floor(y);
+  if (mapBuffer.value && wx >= 0 && wy >= 0 && wx < currentRenderSize.value && wy < currentRenderSize.value) {
+    const tileId = mapBuffer.value[wy * currentRenderSize.value + wx] & 0xff;
+    hoveredBiome.value = biomeNames[tileId] ?? null;
+    hoveredCoords.value = { x: wx, y: wy };
+  } else {
+    hoveredBiome.value = null;
+    hoveredCoords.value = null;
+  }
+
   if (!isDragging.value) return;
 
   if (isDrawMode.value) {
@@ -120,6 +164,11 @@ const onMouseMove = (e: MouseEvent) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   }
+};
+
+const onMouseLeaveCanvas = () => {
+  hoveredBiome.value = null;
+  hoveredCoords.value = null;
 };
 
 const onMouseUp = () => {
@@ -224,7 +273,11 @@ const startAnimation = () => {
         ctx.stroke();
       }
 
-      // 3. Overlay static terrain island
+      // 3. Flush dirty terrain pixels and overlay static terrain island
+      if (landDirty && imgData) {
+        landCtx!.putImageData(imgData, 0, 0);
+        landDirty = false;
+      }
       ctx.drawImage(landCanvas, 0, 0);
 
       // 4. Draw cities on top
@@ -332,9 +385,43 @@ onMounted(() => {
 });
 onUnmounted(() => stopAnimation());
 
+const exportPng = () => {
+  const tmp = document.createElement("canvas");
+  tmp.width = currentRenderSize.value;
+  tmp.height = currentRenderSize.value;
+  const tCtx = tmp.getContext("2d")!;
+  tCtx.fillStyle = "#143d70";
+  tCtx.fillRect(0, 0, tmp.width, tmp.height);
+  tCtx.drawImage(landCanvas, 0, 0);
+
+  tCtx.lineCap = "round";
+  tCtx.lineJoin = "round";
+  tCtx.lineWidth = 4;
+  drawnPaths.value.forEach((item) => {
+    if (item.points.length < 2) return;
+    tCtx.strokeStyle = item.color;
+    tCtx.beginPath();
+    tCtx.moveTo(item.points[0].x, item.points[0].y);
+    for (let i = 1; i < item.points.length; i++) tCtx.lineTo(item.points[i].x, item.points[i].y);
+    tCtx.stroke();
+  });
+
+  tmp.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `map-${mapId.value}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+};
+
 const generateMap = async () => {
   loading.value = true;
   mapId.value = "";
+  receivedChunks.value = 0;
+  totalChunks.value = Math.ceil(size.value / CHUNK_SIZE) ** 2;
   currentRenderSize.value = size.value;
 
   mapBuffer.value = new Uint32Array(
@@ -352,68 +439,54 @@ const generateMap = async () => {
     const response = await axios.post("http://localhost:8080/generate", {
       size: size.value,
       seed: seed.value,
+      temp: temp.value,
+      moisutre: moisture.value,
+      continent: continent.value,
+      city: city.value,
     });
     mapId.value = response.data;
-    startPolling(mapId.value);
+    startStream(mapId.value);
   } catch (error) {
     console.error("Error generating map:", error);
     loading.value = false;
   }
 };
 
-const startPolling = async (id: string) => {
-  let lastChunkId = 0;
-  const poll = async () => {
-    if (mapId.value !== id) return;
-    try {
-      const chunkResponse = await axios.get(
-        `http://localhost:8080/generate/${id}/chunks`,
-        {
-          params: { afterId: lastChunkId || undefined },
-        },
-      );
-      const newChunks = chunkResponse.data || [];
-      const mapResponse = await axios.get(
-        `http://localhost:8080/generate/${id}`,
-      );
-      const status = mapResponse.data.status;
+const startStream = (id: string) => {
+  const source = new EventSource(`http://localhost:8080/generate/${id}/stream`);
 
-      newChunks.forEach((chunk: any) => {
-        if (chunk.id > lastChunkId) lastChunkId = chunk.id;
+  source.addEventListener("chunk", (e: MessageEvent) => {
+    if (mapId.value !== id) { source.close(); return; }
+    const chunk = JSON.parse(e.data);
 
-        for (let i = 0; i < chunk.chunk.length; i++) {
-          const lx = i % CHUNK_SIZE;
-          const ly = Math.floor(i / CHUNK_SIZE);
-          const worldX = chunk.chunkX + lx;
-          const worldY = chunk.chunkY + ly;
+    for (let i = 0; i < chunk.chunk.length; i++) {
+      const lx = i % CHUNK_SIZE;
+      const ly = Math.floor(i / CHUNK_SIZE);
+      const worldX = chunk.chunkX + lx;
+      const worldY = chunk.chunkY + ly;
 
-          if (
-            worldX < currentRenderSize.value &&
-            worldY < currentRenderSize.value
-          ) {
-            const globalIndex = worldY * currentRenderSize.value + worldX;
-            const packedData = chunk.chunk[i];
-            mapBuffer.value![globalIndex] = packedData;
-            updateSingleStaticPixel(globalIndex, packedData, worldX, worldY);
-          }
-        }
-      });
-
-      if (newChunks.length > 0 && imgData) {
-        landCtx!.putImageData(imgData, 0, 0);
+      if (worldX < currentRenderSize.value && worldY < currentRenderSize.value) {
+        const globalIndex = worldY * currentRenderSize.value + worldX;
+        const packedData = chunk.chunk[i];
+        mapBuffer.value![globalIndex] = packedData;
+        updateSingleStaticPixel(globalIndex, packedData, worldX, worldY);
       }
-
-      if (status && status.toString().toUpperCase() === "COMPLETED") {
-        loading.value = false;
-        return;
-      }
-      setTimeout(poll, 500);
-    } catch (error) {
-      console.error("Polling error:", error);
-      loading.value = false;
     }
+
+    receivedChunks.value++;
+    landDirty = true;
+  });
+
+  source.addEventListener("done", () => {
+    loading.value = false;
+    source.close();
+  });
+
+  source.onerror = () => {
+    console.error("SSE error");
+    loading.value = false;
+    source.close();
   };
-  poll();
 };
 
 const getProceduralTexture = (tileId: number, x: number, y: number) => {
@@ -513,6 +586,13 @@ const updateSingleStaticPixel = (
     }
   }
 
+  if (highlightedBiome.value !== null && tileId !== highlightedBiome.value) {
+    r = Math.round(r * 0.18);
+    g = Math.round(g * 0.18);
+    b = Math.round(b * 0.18);
+    if (alpha < 255) alpha = Math.round(alpha * 0.18);
+  }
+
   const pxIndex = globalIndex * 4;
   imgData!.data[pxIndex] = r;
   imgData!.data[pxIndex + 1] = g;
@@ -534,139 +614,744 @@ const rebuildStaticMap = () => {
       Math.floor(i / currentRenderSize.value),
     );
   }
-  landCtx!.putImageData(imgData, 0, 0);
+  landDirty = true;
 };
 
 watch(showTopology, () => rebuildStaticMap());
+watch(highlightedBiome, () => rebuildStaticMap());
 </script>
 
 <template>
   <div class="map-generator">
-    <h1>Map Generator</h1>
-    <div class="controls">
-      <div class="input-group">
-        <label>Size:</label>
-        <input v-model.number="size" type="number" min="10" max="1000" />
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h1>MapGen</h1>
+        <p class="subtitle">Procedural Generation</p>
       </div>
-      <div class="input-group">
-        <label>Seed:</label>
-        <input v-model.number="seed" type="number" />
+
+      <div class="controls">
+        <div class="control-group">
+          <label>Map Size</label>
+          <input
+            v-model.number="size"
+            type="number"
+            min="10"
+            max="1000"
+            class="dark-input"
+          />
+        </div>
+
+        <div class="control-group">
+          <label>World Seed</label>
+          <div class="seed-row">
+            <input v-model.number="seed" type="number" class="dark-input seed-input" />
+            <button class="btn btn-icon" @click="seed = Math.floor(Math.random() * 100000)" title="Randomize seed">&#9880;</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-group slider-group">
+          <label>Temperature <span class="slider-value">{{ temp.toFixed(2) }}</span></label>
+          <input v-model.number="temp" type="range" min="-0.5" max="0.5" step="0.01" class="dark-slider" />
+        </div>
+
+        <div class="control-group slider-group">
+          <label>Moisture <span class="slider-value">{{ moisture.toFixed(2) }}</span></label>
+          <input v-model.number="moisture" type="range" min="-0.5" max="0.5" step="0.01" class="dark-slider" />
+        </div>
+
+        <div class="control-group slider-group">
+          <label>Continent <span class="slider-value">{{ continent.toFixed(2) }}</span></label>
+          <input v-model.number="continent" type="range" min="0.5" max="2" step="0.01" class="dark-slider" />
+        </div>
+
+        <div class="control-group slider-group">
+          <label>City Density <span class="slider-value">{{ city.toFixed(2) }}</span></label>
+          <input v-model.number="city" type="range" min="0.0" max="0.5" step="0.01" class="dark-slider" />
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-group switch-group">
+          <label class="switch-label">
+            <span class="toggle-text">Show Topology</span>
+            <div class="toggle-switch">
+              <input v-model="showTopology" type="checkbox" />
+              <span class="slider"></span>
+            </div>
+          </label>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-group" v-if="isDrawMode">
+          <label>Brush Color</label>
+          <div class="color-picker-wrapper">
+            <input v-model="drawColor" type="color" />
+            <span class="color-value">{{ drawColor }}</span>
+          </div>
+        </div>
+
+        <div class="action-buttons">
+          <button
+            class="btn btn-mode"
+            :class="{ 'is-active': isDrawMode }"
+            @click="isDrawMode = !isDrawMode"
+          >
+            {{ isDrawMode ? "Drawing Mode" : "Drag Mode" }}
+          </button>
+
+          <button
+            class="btn btn-danger"
+            @click="clearDrawing"
+            v-if="drawnPaths.length > 0"
+          >
+            Clear
+          </button>
+        </div>
+
+        <button
+          class="btn btn-primary generate-btn"
+          @click="generateMap"
+          :disabled="loading"
+        >
+          <span v-if="loading" class="loader"></span>
+          <span v-else>Generate New World</span>
+        </button>
+
+        <div v-if="loading" class="progress-wrap">
+          <div class="progress-bar" :style="{ width: progress + '%' }"></div>
+          <span class="progress-label">{{ progress }}%</span>
+        </div>
+
+        <div v-if="mapId && !loading" class="map-info-box">
+          <div class="info-label">Active Map ID</div>
+          <div class="info-value">{{ mapId }}</div>
+          <div class="info-hint">Use mouse to drag & scroll to zoom</div>
+          <button class="btn btn-export" @click="exportPng">Export PNG</button>
+        </div>
+
+        <div class="legend-section">
+          <button class="btn-legend-toggle" @click="showLegend = !showLegend">
+            Biome Legend {{ showLegend ? '▲' : '▼' }}
+          </button>
+          <div v-if="showLegend" class="legend-list">
+            <div
+              v-for="(name, id) in biomeNames"
+              :key="id"
+              class="legend-item"
+              :class="{ 'is-highlighted': highlightedBiome === Number(id), 'is-dimmed': highlightedBiome !== null && highlightedBiome !== Number(id) }"
+              @click="toggleHighlight(Number(id))"
+            >
+              <span class="legend-swatch" :style="{ background: colors[Number(id)] ?? '#888' }"></span>
+              <span class="legend-name">{{ name }}</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="input-group checkbox">
-        <label>Topology:</label>
-        <input v-model="showTopology" type="checkbox" />
-      </div>
-      <div class="input-group" v-if="isDrawMode">
-        <label>Color:</label>
-        <input v-model="drawColor" type="color" />
-      </div>
-      <button
-        @click="isDrawMode = !isDrawMode"
-        :style="{ backgroundColor: isDrawMode ? '#ff3366' : '#2196F3' }"
-      >
-        {{ isDrawMode ? "Draw Mode: ON" : "Drag Mode" }}
-      </button>
-      <button
-        @click="clearDrawing"
-        style="background-color: #f44336"
-        v-if="drawnPaths.length > 0"
-      >
-        Clear
-      </button>
-      <button @click="generateMap" :disabled="loading">
-        {{ loading ? "Generating..." : "Generate New Map" }}
-      </button>
     </div>
 
-    <div v-if="mapId" class="map-info">
-      <p>Map ID: {{ mapId }} (Use Mouse to Drag & Wheel to Zoom)</p>
-    </div>
-
-    <div class="canvas-container">
-      <canvas
-        ref="canvasRef"
-        @mousedown="onMouseDown"
-        @mousemove="onMouseMove"
-        @mouseup="onMouseUp"
-        @mouseleave="onMouseUp"
-        @wheel="onWheel"
-        :style="{
-          width: VIEWPORT_W + 'px',
-          height: VIEWPORT_H + 'px',
-          imageRendering: 'pixelated',
-          cursor: isDrawMode ? 'crosshair' : isDragging ? 'grabbing' : 'grab',
+    <div class="canvas-wrapper">
+      <div
+        class="canvas-container"
+        :class="{
+          'is-drawing': isDrawMode,
+          'is-dragging': isDragging && !isDrawMode,
         }"
-      ></canvas>
+      >
+        <canvas
+          ref="canvasRef"
+          @mousedown="onMouseDown"
+          @mousemove="onMouseMove"
+          @mouseup="onMouseUp"
+          @mouseleave="onMouseLeaveCanvas"
+          @wheel="onWheel"
+          :style="{
+            width: VIEWPORT_W + 'px',
+            height: VIEWPORT_H + 'px',
+            imageRendering: 'pixelated',
+          }"
+        ></canvas>
+        <div v-if="hoveredBiome" class="hover-info">
+          <span class="hover-biome">{{ hoveredBiome }}</span>
+          <span class="hover-coords" v-if="hoveredCoords">{{ hoveredCoords.x }}, {{ hoveredCoords.y }}</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* Dark Theme UI */
 .map-generator {
   display: flex;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-color, #0b0f19);
+  color: var(--text-primary, #e2e8f0);
+  overflow: hidden;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.sidebar {
+  width: 320px;
+  min-width: 320px;
+  background: var(--panel-bg, rgba(20, 25, 35, 0.95));
+  border-right: 1px solid var(--panel-border, rgba(255, 255, 255, 0.05));
+  display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
+  padding: 24px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  margin-bottom: 32px;
+}
+
+.sidebar-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .controls {
   display: flex;
-  gap: 15px;
-  align-items: flex-end;
-  background: #f4f4f4;
-  padding: 15px;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.dark-input {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  color: white;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.dark-input:focus {
+  border-color: var(--accent-color, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Custom Switch */
+.switch-group {
+  margin-top: 4px;
+}
+
+.switch-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  width: 100%;
+}
+
+.toggle-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: 0.3s;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+input:checked + .slider {
+  background-color: var(--accent-color, #3b82f6);
+  border-color: var(--accent-color, #3b82f6);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.divider {
+  height: 1px;
+  background: var(--panel-border, rgba(255, 255, 255, 0.08));
+  margin: 4px 0;
+}
+
+.color-picker-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  padding: 8px 12px;
   border-radius: 8px;
 }
 
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.input-group.checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 10px;
-}
-
-.input-group.checkbox input {
-  width: 18px;
-  height: 18px;
-}
-
-input {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-button {
-  padding: 10px 20px;
-  background-color: #4caf50;
-  color: white;
+.color-picker-wrapper input[type="color"] {
+  -webkit-appearance: none;
   border: none;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   cursor: pointer;
-  font-weight: bold;
+  padding: 0;
+  background: none;
+}
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
 }
 
-button:disabled {
-  background-color: #cccccc;
+.color-value {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.btn-mode {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #e2e8f0);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-mode:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-mode.is-active {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  flex: 0.8;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.generate-btn {
+  background: var(--accent-color, #3b82f6);
+  color: white;
+  padding: 16px;
+  font-size: 16px;
+  margin-top: 12px;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.generate-btn:hover:not(:disabled) {
+  background: var(--accent-hover, #2563eb);
+  transform: translateY(-1px);
+}
+
+.generate-btn:disabled {
+  background: #334155;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Loader */
+.loader {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-bottom-color: white;
+  border-radius: 50%;
+  display: inline-block;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.map-info-box {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.info-value {
+  font-family: monospace;
+  font-size: 14px;
+  color: #60a5fa;
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+
+.info-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.info-hint::before {
+  content: "ℹ️";
+  font-size: 14px;
+}
+
+/* Canvas Area */
+.canvas-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  position: relative;
+}
+
+/* Dot pattern background */
+.canvas-wrapper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.1) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  pointer-events: none;
 }
 
 .canvas-container {
-  border: 2px solid #333;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: #050a14;
-  display: flex;
-  overflow: hidden;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  position: relative;
+  z-index: 1;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.canvas-container:hover {
+  box-shadow:
+    0 32px 64px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.is-drawing canvas {
+  cursor: crosshair !important;
+}
+
+.is-dragging canvas {
+  cursor: grabbing !important;
 }
 
 canvas {
   max-width: 100%;
+  display: block;
+}
+
+.seed-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.seed-input {
+  flex: 1;
+}
+
+.btn-icon {
+  flex: none;
+  width: 40px;
+  height: 42px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.progress-wrap {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #a78bfa);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-label {
+  position: absolute;
+  right: 0;
+  top: -18px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.btn-export {
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-export:hover {
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.legend-section {
+  margin-top: 4px;
+}
+
+.btn-legend-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 0;
+  letter-spacing: 0.5px;
+}
+
+.btn-legend-toggle:hover {
+  color: #e2e8f0;
+}
+
+.legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.legend-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.legend-item.is-highlighted {
+  background: rgba(96, 165, 250, 0.15);
+  outline: 1px solid rgba(96, 165, 250, 0.4);
+}
+
+.legend-item.is-dimmed {
+  opacity: 0.35;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.legend-name {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.hover-info {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(10, 15, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.hover-biome {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.hover-coords {
+  font-family: monospace;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.slider-group label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-value {
+  font-family: monospace;
+  font-size: 13px;
+  color: #60a5fa;
+}
+
+.dark-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  cursor: pointer;
+}
+
+.dark-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+  transition: background 0.2s;
+}
+
+.dark-slider::-webkit-slider-thumb:hover {
+  background: #60a5fa;
 }
 </style>

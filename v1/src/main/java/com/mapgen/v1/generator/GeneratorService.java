@@ -1,15 +1,20 @@
 package com.mapgen.v1.generator;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.mapgen.v1.dto.GeneratorDto;
 import com.mapgen.v1.enums.GeneratingStatus;
 import com.mapgen.v1.models.GeneratedMap;
 import com.mapgen.v1.models.MapChunk;
@@ -25,6 +30,15 @@ public class GeneratorService {
     private static final int CHUNK_SIZE = 32;
     private final GeneratorRepository generatorRepository;
     private final ChunkRepository chunkRepository;
+    private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
+
+    public SseEmitter createEmitter(Long mapId) {
+        SseEmitter emitter = new SseEmitter(10 * 60 * 1000L);
+        emitters.put(mapId, emitter);
+        emitter.onCompletion(() -> emitters.remove(mapId));
+        emitter.onTimeout(() -> emitters.remove(mapId));
+        return emitter;
+    }
 
     public GeneratorService(GeneratorRepository generatorRepository, ChunkRepository chunkRepository){
         this.generatorRepository = generatorRepository;
@@ -36,7 +50,7 @@ public class GeneratorService {
     }
     
     @Async
-    public void generate(GeneratedMap mapFromController){
+    public void generate(GeneratedMap mapFromController, GeneratorDto dto){
         GeneratedMap map = this.generatorRepository.findById(mapFromController.getId()).orElseThrow();
         
         LOGGER.info("=== Started Generating ===");
@@ -87,7 +101,7 @@ public class GeneratorService {
                 int candidateLocalX = chunkRandom.nextInt(CHUNK_SIZE);
                 int candidateLocalY = chunkRandom.nextInt(CHUNK_SIZE);
 
-                boolean attemptCityGen = chunkRandom.nextFloat() < 0.10f;
+                boolean attemptCityGen = chunkRandom.nextFloat() < dto.getCity();
                 boolean cityBuilt = false;
 
                 for (int x = 0; x < CHUNK_SIZE; x++){
@@ -109,17 +123,21 @@ public class GeneratorService {
                         float normalisedHeight = (rawHeightmapNoise + 1) / 2;
 
                         float rawMoisutreNoise = moisutre.GetNoise(warpedX, warpedY);
+                        float moistureBias = dto.getMoisutre();
                         float normalisedMoisture = (rawMoisutreNoise + 1) / 2;
+                        normalisedMoisture += moistureBias;
+                        normalisedMoisture = Math.max(0.0f, Math.min(1.0f, normalisedMoisture));
 
                         float rawTemperatureNoise = temperature.GetNoise(warpedX, warpedY);
                         float normalisedTemperature = (rawTemperatureNoise + 1) / 2;
-                        float tempBias = 0.2f;
+                        float tempBias = dto.getTemp();
                         normalisedTemperature += tempBias;
                         normalisedTemperature = Math.max(0.0f, Math.min(1.0f, normalisedTemperature));
 
                         float rawMask = continentMask.GetNoise(warpedX, warpedY);
                         float normalisedMask = (rawMask + 1) / 2;
-                        normalisedMask = (float) Math.pow(normalisedMask, 1.2);
+                        float continentBias = dto.getContinent();
+                        normalisedMask = (float) Math.pow(normalisedMask, continentBias);
 
                         float rawRiver = riverNoise.GetNoise(warpedX, warpedY);
                         boolean isRiver = Math.abs(rawRiver) < 0.025f;
@@ -256,12 +274,32 @@ public class GeneratorService {
 
             }
             this.chunkRepository.saveAll(chunkBuffer);
+            SseEmitter emitter = emitters.get(map.getId());
+            if (emitter != null) {
+                for (MapChunk chunk : chunkBuffer) {
+                    try {
+                        emitter.send(SseEmitter.event().name("chunk").data(chunk));
+                    } catch (IOException e) {
+                        emitter.completeWithError(e);
+                        emitters.remove(map.getId());
+                        break;
+                    }
+                }
+            }
             chunkBuffer.clear();
         }
 
         map.setStatus(GeneratingStatus.COMPLETED);
         this.generatorRepository.save(map);
         LOGGER.info("=== Finished Generating Map ID: {} ===", map.getId());
+
+        SseEmitter emitter = emitters.get(map.getId());
+        if (emitter != null) {
+            try {
+                emitter.send(SseEmitter.event().name("done").data(map.getId()));
+            } catch (IOException ignored) {}
+            emitter.complete();
+        }
     }
 
     public GeneratedMap getMapById(Long id){
