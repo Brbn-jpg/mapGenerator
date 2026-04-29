@@ -15,6 +15,17 @@ A simple procedural map generator using Spring Boot (Java) for the backend and V
   - **Stylized Visuals**: Custom "Don't Starve" style water effect with procedural wave patterns and transparency.
   - **Adaptive Scaling**: Animation details and wave density automatically scale with the map resolution.
 
+### Frontend Source Layout
+```
+frontend/src/
+├── api/                  # axios client and typed map endpoints
+├── constants/biomes.ts   # biome IDs, colors, names
+├── composables/          # useCamera, useDrawing, useTerrainBuffer,
+│                         # useMapStream, useWaveRenderer, renderCities
+└── components/           # MapGenerator (shell), MapSidebar, MapCanvas,
+                          # MapHistory, BiomeLegend
+```
+
 ## Visual Features
 
 ### 1. Interactive Viewport
@@ -93,6 +104,8 @@ npm install
 npm run dev
 ```
 The UI will be available at `http://localhost:5173`.
+
+The frontend reads the backend URL from `VITE_API_URL` (defaults to `http://localhost:8080` via `frontend/.env`). Override it in `frontend/.env.local` when deploying against a different backend.
 
 ## API Endpoints
 
