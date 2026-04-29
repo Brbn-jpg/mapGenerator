@@ -306,6 +306,10 @@ public class GeneratorService {
         return this.generatorRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Map with id" + id + " was not found"));
     }
 
+    public List<GeneratedMap> getLastFiveMaps(){
+        return this.generatorRepository.getLastFiveMaps();
+    }
+
     public List<MapChunk> getChunksByMapId(Long id, Long afterId){
         GeneratedMap map = getMapById(id);
         if (afterId != null) {

@@ -112,6 +112,52 @@ const progress = computed(() =>
 const showLegend = ref(false);
 const highlightedBiome = ref<number | null>(null);
 
+interface MapRecord { id: number; seed: number; size: number; status: string; }
+const previousMaps = ref<MapRecord[]>([]);
+
+const fetchHistory = async () => {
+  try {
+    const res = await axios.get("http://localhost:8080/generate/last");
+    previousMaps.value = res.data;
+  } catch (e) {
+    console.error("Failed to fetch history", e);
+  }
+};
+
+const loadMap = async (map: MapRecord) => {
+  loading.value = true;
+  mapId.value = String(map.id);
+  currentRenderSize.value = map.size;
+  receivedChunks.value = 0;
+  totalChunks.value = Math.ceil(map.size / CHUNK_SIZE) ** 2;
+  mapBuffer.value = new Uint32Array(map.size * map.size);
+  citiesList = [];
+  landCanvas.width = map.size;
+  landCanvas.height = map.size;
+  imgData = landCtx!.createImageData(map.size, map.size);
+
+  try {
+    const res = await axios.get(`http://localhost:8080/generate/${map.id}/chunks`);
+    (res.data || []).forEach((chunk: any) => {
+      for (let i = 0; i < chunk.chunk.length; i++) {
+        const worldX = chunk.chunkX + (i % CHUNK_SIZE);
+        const worldY = chunk.chunkY + Math.floor(i / CHUNK_SIZE);
+        if (worldX < currentRenderSize.value && worldY < currentRenderSize.value) {
+          const globalIndex = worldY * currentRenderSize.value + worldX;
+          mapBuffer.value![globalIndex] = chunk.chunk[i];
+          updateSingleStaticPixel(globalIndex, chunk.chunk[i], worldX, worldY);
+        }
+      }
+      receivedChunks.value++;
+    });
+    landDirty = true;
+  } catch (e) {
+    console.error("Failed to load map", e);
+  } finally {
+    loading.value = false;
+  }
+};
+
 const toggleHighlight = (id: number) => {
   highlightedBiome.value = highlightedBiome.value === id ? null : id;
 };
@@ -382,6 +428,7 @@ onMounted(() => {
     canvasRef.value.height = VIEWPORT_H;
   }
   startAnimation();
+  fetchHistory();
 });
 onUnmounted(() => stopAnimation());
 
@@ -480,6 +527,7 @@ const startStream = (id: string) => {
   source.addEventListener("done", () => {
     loading.value = false;
     source.close();
+    fetchHistory();
   });
 
   source.onerror = () => {
@@ -730,6 +778,28 @@ watch(highlightedBiome, () => rebuildStaticMap());
           <div class="info-value">{{ mapId }}</div>
           <div class="info-hint">Use mouse to drag & scroll to zoom</div>
           <button class="btn btn-export" @click="exportPng">Export PNG</button>
+        </div>
+
+        <div class="history-section" v-if="previousMaps.length > 0">
+          <div class="section-label">Recent Maps</div>
+          <div class="history-list">
+            <div
+              v-for="m in previousMaps"
+              :key="m.id"
+              class="history-item"
+              :class="{ 'is-active': mapId === String(m.id) }"
+              @click="loadMap(m)"
+            >
+              <div class="history-item-row">
+                <span class="history-id">#{{ m.id }}</span>
+                <span class="history-status" :class="m.status.toLowerCase()">{{ m.status }}</span>
+              </div>
+              <div class="history-item-row history-meta">
+                <span>{{ m.size }}×{{ m.size }}</span>
+                <span>seed {{ m.seed }}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="legend-section">
@@ -1223,6 +1293,85 @@ canvas {
 
 .btn-export:hover {
   background: rgba(99, 102, 241, 0.25);
+}
+
+.history-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.history-item.is-active {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.history-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-id {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.history-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.history-status.completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.history-status.in_progress {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fde047;
+}
+
+.history-meta {
+  font-size: 11px;
+  color: #64748b;
 }
 
 .legend-section {

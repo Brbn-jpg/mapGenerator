@@ -58,6 +58,11 @@ public class GeneratorController {
         return ResponseEntity.ok(map);
     }
 
+    @GetMapping("/last")
+    public ResponseEntity<List<GeneratedMap>> getLastFiveMaps(){
+        return ResponseEntity.ok(this.generatorService.getLastFiveMaps());
+    }
+
     @GetMapping("/{id}/chunks")
     public ResponseEntity<List<MapChunk>> getChunksByMapId(
         @PathVariable Long id, 
