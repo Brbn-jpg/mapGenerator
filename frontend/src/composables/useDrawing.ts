@@ -23,9 +23,12 @@ export function useDrawing() {
   const brushWidth = ref(4);
   const drawnPaths = ref<DrawnPath[]>([]);
   const currentPath = ref<{ x: number; y: number }[]>([]);
+  // World-space width of the in-progress stroke, captured at draw start.
+  let currentWorldWidth = 4;
 
-  const beginPath = (point: { x: number; y: number }) => {
+  const beginPath = (point: { x: number; y: number }, zoomAtDraw: number) => {
     currentPath.value = [point];
+    currentWorldWidth = brushWidth.value / Math.max(zoomAtDraw, 0.0001);
   };
 
   const extendPath = (point: { x: number; y: number }) => {
@@ -38,7 +41,7 @@ export function useDrawing() {
         points: [...currentPath.value],
         color: drawColor.value,
         type: brushType.value,
-        width: brushWidth.value,
+        width: currentWorldWidth,
       });
       currentPath.value = [];
     }
@@ -53,12 +56,12 @@ export function useDrawing() {
     currentPath.value = [];
   };
 
+  // `width` here is in world units — the path-coordinate space before the camera transform.
   const applyBrushStyle = (
     ctx: CanvasRenderingContext2D,
     type: BrushType,
     color: string,
     width: number,
-    zoom: number,
   ) => {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -66,18 +69,18 @@ export function useDrawing() {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
     ctx.strokeStyle = color;
-    ctx.lineWidth = width / zoom;
+    ctx.lineWidth = width;
     switch (type) {
       case "marker":
         ctx.globalAlpha = 0.45;
-        ctx.lineWidth = (width * 2) / zoom;
+        ctx.lineWidth = width * 2;
         break;
       case "dashed":
-        ctx.setLineDash([width * 2 / zoom, width * 1.5 / zoom]);
+        ctx.setLineDash([width * 2, width * 1.5]);
         break;
       case "eraser":
         ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = (width * 1.5) / zoom;
+        ctx.lineWidth = width * 1.5;
         break;
     }
   };
@@ -93,16 +96,15 @@ export function useDrawing() {
     ctx.stroke();
   };
 
-  const renderPaths = (ctx: CanvasRenderingContext2D, zoom: number) => {
+  const renderPaths = (ctx: CanvasRenderingContext2D) => {
     drawnPaths.value.forEach((item) => {
-      applyBrushStyle(ctx, item.type, item.color, item.width, zoom);
+      applyBrushStyle(ctx, item.type, item.color, item.width);
       drawSegment(ctx, item.points);
     });
     if (currentPath.value.length > 0) {
-      applyBrushStyle(ctx, brushType.value, drawColor.value, brushWidth.value, zoom);
+      applyBrushStyle(ctx, brushType.value, drawColor.value, currentWorldWidth);
       drawSegment(ctx, currentPath.value);
     }
-    // Reset state so subsequent rendering isn't affected.
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";

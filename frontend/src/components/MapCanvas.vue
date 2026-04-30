@@ -44,7 +44,10 @@ defineExpose({ canvasRef, camera });
 const onMouseDown = (e: MouseEvent) => {
   if (props.drawing.isDrawMode.value) {
     camera.isDragging.value = true;
-    props.drawing.beginPath(camera.getWorldCoords(e.clientX, e.clientY));
+    props.drawing.beginPath(
+      camera.getWorldCoords(e.clientX, e.clientY),
+      camera.zoom.value,
+    );
   } else {
     camera.beginPan(e.clientX, e.clientY);
   }
@@ -130,7 +133,7 @@ const animate = () => {
       camera.zoom.value, 0, 0, camera.zoom.value,
       camera.offsetX.value, camera.offsetY.value,
     );
-    props.drawing.renderPaths(pathsCtx, camera.zoom.value);
+    props.drawing.renderPaths(pathsCtx);
     pathsCtx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(pathsCanvas, 0, 0);
   }

@@ -49,7 +49,7 @@ const exportPng = () => {
   tctx.fillStyle = "#143d70";
   tctx.fillRect(0, 0, w, w);
   tctx.drawImage(terrain.landCanvas, 0, 0);
-  drawing.renderPaths(tctx, 1);
+  drawing.renderPaths(tctx);
   tmp.toBlob((blob) => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
