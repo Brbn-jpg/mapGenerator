@@ -2,6 +2,8 @@
 
 A simple procedural map generator using Spring Boot (Java) for the backend and Vue 3 (TypeScript) for the frontend. The project uses FastNoiseLite to generate terrain based on a seed and size.
 
+![Example generated map](example.png)
+
 ## Project Structure
 
 - `v1/`: Spring Boot backend application.
