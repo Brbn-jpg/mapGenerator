@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { MapRecord } from "../api/maps";
 import type { BiomeId } from "../constants/biomes";
 import { BRUSH_LABELS, type BrushType } from "../composables/useDrawing";
+import { generateMapName } from "../utils/mapName";
 import BiomeLegend from "./BiomeLegend.vue";
 import MapHistory from "./MapHistory.vue";
 
@@ -50,6 +51,7 @@ const randomizeSeed = () => emit("update:seed", Math.floor(Math.random() * 10000
 
 const brushOptions: BrushType[] = ["pen", "marker", "dashed", "eraser"];
 const showLagWarning = computed(() => props.size >= 2000);
+const mapName = computed(() => props.mapId ? generateMapName(props.seed) : null);
 </script>
 
 <template>
@@ -57,6 +59,9 @@ const showLagWarning = computed(() => props.size >= 2000);
     <div class="sidebar-header">
       <h1>MapGen</h1>
       <p class="subtitle">Procedural Generation</p>
+      <Transition name="map-name">
+        <p v-if="mapName" class="map-name">{{ mapName }}</p>
+      </Transition>
     </div>
 
     <div class="controls">
@@ -294,6 +299,18 @@ const showLagWarning = computed(() => props.size >= 2000);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+.map-name {
+  margin: 10px 0 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-style: italic;
+  color: #a78bfa;
+  letter-spacing: 0.2px;
+}
+.map-name-enter-active { transition: opacity 0.5s ease, transform 0.5s ease; }
+.map-name-enter-from { opacity: 0; transform: translateY(-6px); }
+.map-name-leave-active { transition: opacity 0.3s ease; }
+.map-name-leave-to { opacity: 0; }
 .controls { display: flex; flex-direction: column; gap: 20px; }
 .control-group { display: flex; flex-direction: column; gap: 8px; }
 .control-group label {
