@@ -2,10 +2,13 @@
 import { computed } from "vue";
 import type { MapRecord } from "../api/maps";
 import type { BiomeId } from "../constants/biomes";
+import { BIOME_COLORS, BIOME_NAMES } from "../constants/biomes";
 import { BRUSH_LABELS, type BrushType } from "../composables/useDrawing";
 import { generateMapName } from "../utils/mapName";
 import BiomeLegend from "./BiomeLegend.vue";
 import MapHistory from "./MapHistory.vue";
+
+type BiomeStat = { id: number; count: number; pct: number };
 
 const props = defineProps<{
   seed: number;
@@ -25,6 +28,7 @@ const props = defineProps<{
   mapId: string;
   highlightedBiome: BiomeId | null;
   previousMaps: MapRecord[];
+  biomeStats: BiomeStat[];
 }>();
 
 const emit = defineEmits<{
@@ -52,6 +56,11 @@ const randomizeSeed = () => emit("update:seed", Math.floor(Math.random() * 10000
 const brushOptions: BrushType[] = ["pen", "marker", "dashed", "eraser"];
 const showLagWarning = computed(() => props.size >= 2000);
 const mapName = computed(() => props.mapId ? generateMapName(props.seed) : null);
+const topBiomes = computed(() => props.biomeStats.slice(0, 8));
+const otherPct = computed(() => {
+  const shown = topBiomes.value.reduce((s, b) => s + b.pct, 0);
+  return Math.max(0, 100 - shown);
+});
 </script>
 
 <template>
@@ -239,6 +248,34 @@ const mapName = computed(() => props.mapId ? generateMapName(props.seed) : null)
         <div class="info-hint">Use mouse to drag & scroll to zoom</div>
         <button class="btn btn-export" @click="emit('exportPng')">Export PNG</button>
       </div>
+
+      <Transition name="stats">
+        <div v-if="topBiomes.length > 0 && !props.loading" class="biome-stats">
+          <div class="info-label">Biome Coverage</div>
+          <div class="biome-bar">
+            <div
+              v-for="b in topBiomes"
+              :key="b.id"
+              class="biome-bar-seg"
+              :style="{ width: b.pct + '%', background: BIOME_COLORS[b.id] ?? '#444' }"
+              :title="`${BIOME_NAMES[b.id] ?? 'Unknown'} — ${b.pct.toFixed(1)}%`"
+            />
+            <div
+              v-if="otherPct > 0.5"
+              class="biome-bar-seg"
+              :style="{ width: otherPct + '%', background: '#333' }"
+              title="Other biomes"
+            />
+          </div>
+          <div class="biome-list">
+            <div v-for="b in topBiomes" :key="b.id" class="biome-list-item">
+              <span class="biome-dot" :style="{ background: BIOME_COLORS[b.id] ?? '#444' }" />
+              <span class="biome-list-name">{{ BIOME_NAMES[b.id] ?? '?' }}</span>
+              <span class="biome-list-pct">{{ b.pct.toFixed(1) }}%</span>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
       <MapHistory
         :items="props.previousMaps"
@@ -674,4 +711,52 @@ input:checked + .slider:before { transform: translateX(20px); }
   transition: background 0.2s;
 }
 .dark-slider::-webkit-slider-thumb:hover { background: #60a5fa; }
+.biome-stats {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.biome-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 8px 0 10px;
+  gap: 1px;
+}
+.biome-bar-seg {
+  height: 100%;
+  min-width: 2px;
+  transition: filter 0.15s;
+}
+.biome-bar-seg:hover { filter: brightness(1.4); cursor: default; }
+.biome-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.biome-list-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.biome-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.biome-list-name {
+  flex: 1;
+  color: #94a3b8;
+}
+.biome-list-pct {
+  font-family: monospace;
+  color: #60a5fa;
+  font-size: 11px;
+}
+.stats-enter-active { transition: opacity 0.4s ease, transform 0.4s ease; }
+.stats-enter-from { opacity: 0; transform: translateY(8px); }
 </style>

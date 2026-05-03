@@ -19,9 +19,13 @@ const city = ref(0.1);
 const terrain = useTerrainBuffer();
 const drawing = useDrawing();
 
+type BiomeStat = { id: number; count: number; pct: number };
+const biomeStats = ref<BiomeStat[]>([]);
+
 const stream = useMapStream({
-  onInit: (s) => terrain.init(s),
+  onInit: (s) => { terrain.init(s); biomeStats.value = []; },
   onChunk: (cx, cy, ch, csz) => terrain.ingestChunk(cx, cy, ch, csz),
+  onDone: () => { biomeStats.value = terrain.getBiomeCounts(); },
 });
 
 const generate = () =>
@@ -107,6 +111,7 @@ onUnmounted(() => stream.closeStream());
       :map-id="stream.mapId.value"
       :highlighted-biome="terrain.highlightedBiome.value"
       :previous-maps="stream.previousMaps.value"
+      :biome-stats="biomeStats"
       @update:seed="seed = $event"
       @update:size="size = $event"
       @update:temp="temp = $event"

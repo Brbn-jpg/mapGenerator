@@ -215,6 +215,20 @@ export function useTerrainBuffer() {
     return mapBuffer.value[y * size.value + x] & 0xff;
   };
 
+  const getBiomeCounts = () => {
+    if (!mapBuffer.value) return [];
+    const counts: Record<number, number> = {};
+    const buf = mapBuffer.value;
+    const total = buf.length;
+    for (let i = 0; i < total; i++) {
+      const id = buf[i] & 0xff;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([id, count]) => ({ id: Number(id), count, pct: (count / total) * 100 }))
+      .sort((a, b) => b.count - a.count);
+  };
+
   return {
     size,
     showTopology,
@@ -230,5 +244,6 @@ export function useTerrainBuffer() {
     flushHighlight,
     biomeAt,
     getCities: () => citiesList,
+    getBiomeCounts,
   };
 }
