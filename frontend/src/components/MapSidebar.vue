@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { MapRecord } from "../api/maps";
 import type { BiomeId } from "../constants/biomes";
 import { BIOME_COLORS, BIOME_NAMES } from "../constants/biomes";
@@ -61,6 +61,26 @@ const otherPct = computed(() => {
   const shown = topBiomes.value.reduce((s, b) => s + b.pct, 0);
   return Math.max(0, 100 - shown);
 });
+
+const copied = ref(false);
+const copyShareLink = async () => {
+  const params = new URLSearchParams({
+    seed: String(props.seed),
+    size: String(props.size),
+    temp: props.temp.toFixed(2),
+    moisture: props.moisture.toFixed(2),
+    continent: props.continent.toFixed(2),
+    city: props.city.toFixed(2),
+  });
+  const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1500);
+  } catch {
+    window.prompt("Copy this link:", url);
+  }
+};
 </script>
 
 <template>
@@ -247,6 +267,9 @@ const otherPct = computed(() => {
         <div class="info-value">{{ props.mapId }}</div>
         <div class="info-hint">Use mouse to drag & scroll to zoom</div>
         <button class="btn btn-export" @click="emit('exportPng')">Export PNG</button>
+        <button class="btn btn-export" @click="copyShareLink">
+          {{ copied ? "✓ Copied!" : "Copy Share Link" }}
+        </button>
       </div>
 
       <Transition name="stats">

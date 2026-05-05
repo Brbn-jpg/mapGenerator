@@ -87,7 +87,29 @@ useKeyboardShortcuts({
   },
 });
 
-onMounted(() => stream.refreshHistory());
+const applyUrlParams = () => {
+  const p = new URLSearchParams(window.location.search);
+  const num = (key: string, setter: (v: number) => void) => {
+    const raw = p.get(key);
+    if (raw === null) return;
+    const v = Number(raw);
+    if (Number.isFinite(v)) setter(v);
+  };
+  let hasAny = false;
+  const mark = (fn: (v: number) => void) => (v: number) => { hasAny = true; fn(v); };
+  num("seed", mark((v) => (seed.value = v)));
+  num("size", mark((v) => (size.value = v)));
+  num("temp", mark((v) => (temp.value = v)));
+  num("moisture", mark((v) => (moisture.value = v)));
+  num("continent", mark((v) => (continent.value = v)));
+  num("city", mark((v) => (city.value = v)));
+  if (hasAny) generate();
+};
+
+onMounted(() => {
+  stream.refreshHistory();
+  applyUrlParams();
+});
 onUnmounted(() => stream.closeStream());
 </script>
 
