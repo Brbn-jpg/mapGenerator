@@ -6,12 +6,14 @@ import { useDrawing } from "../composables/useDrawing";
 import { useWaveRenderer } from "../composables/useWaveRenderer";
 import { renderCities } from "../composables/renderCities";
 import type { useTerrainBuffer } from "../composables/useTerrainBuffer";
+import type { useDayNightCycle } from "../composables/useDayNightCycle";
 
 type Terrain = ReturnType<typeof useTerrainBuffer>;
 
 const props = defineProps<{
   terrain: Terrain;
   drawing: ReturnType<typeof useDrawing>;
+  dayNight: ReturnType<typeof useDayNightCycle>;
   renderSize: number;
 }>();
 
@@ -88,9 +90,14 @@ const onMouseLeave = () => {
 
 let rafId: number | null = null;
 let t = 0;
+let lastFrameMs: number | null = null;
 
 const animate = () => {
   t += 0.01;
+  const nowMs = performance.now();
+  const dt = lastFrameMs === null ? 0 : (nowMs - lastFrameMs) / 1000;
+  lastFrameMs = nowMs;
+  props.dayNight.tick(dt);
   const ctx = canvasRef.value?.getContext("2d");
   if (ctx) {
     ctx.fillStyle = "#050a14";
@@ -123,6 +130,17 @@ const animate = () => {
 
       // Cities
       renderCities(ctx, props.terrain.getCities(), camera.zoom.value);
+
+      // Day/night tint — multiplied over land+water+cities so the whole scene
+      // shifts mood. Applied inside the clip so it stops at map edges.
+      const tint = props.dayNight.tintColor.value;
+      if (tint) {
+        ctx.save();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.fillStyle = tint;
+        ctx.fillRect(0, 0, w, w);
+        ctx.restore();
+      }
     }
     ctx.restore();
 

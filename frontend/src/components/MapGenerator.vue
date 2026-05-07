@@ -6,6 +6,7 @@ import { useTerrainBuffer } from "../composables/useTerrainBuffer";
 import { useDrawing, type BrushType } from "../composables/useDrawing";
 import { useMapStream } from "../composables/useMapStream";
 import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
+import { useDayNightCycle } from "../composables/useDayNightCycle";
 import MapSidebar from "./MapSidebar.vue";
 import MapCanvas from "./MapCanvas.vue";
 
@@ -18,6 +19,7 @@ const city = ref(0.1);
 
 const terrain = useTerrainBuffer();
 const drawing = useDrawing();
+const dayNight = useDayNightCycle();
 
 type BiomeStat = { id: number; count: number; pct: number };
 const biomeStats = ref<BiomeStat[]>([]);
@@ -116,6 +118,15 @@ onUnmounted(() => stream.closeStream());
 <template>
   <div class="map-generator">
     <MapSidebar
+      :day-night-enabled="dayNight.enabled.value"
+      :day-night-auto="dayNight.auto.value"
+      :day-night-time="dayNight.time.value"
+      :day-night-cycle-seconds="dayNight.cycleSeconds.value"
+      :day-night-phase="dayNight.phaseLabel.value"
+      @update:day-night-enabled="dayNight.enabled.value = $event"
+      @update:day-night-auto="dayNight.auto.value = $event"
+      @update:day-night-time="dayNight.time.value = $event"
+      @update:day-night-cycle-seconds="dayNight.cycleSeconds.value = $event"
       :seed="seed"
       :size="size"
       :temp="temp"
@@ -156,6 +167,7 @@ onUnmounted(() => stream.closeStream());
       ref="mapCanvasRef"
       :terrain="terrain"
       :drawing="drawing"
+      :day-night="dayNight"
       :render-size="stream.currentRenderSize.value"
     />
   </div>

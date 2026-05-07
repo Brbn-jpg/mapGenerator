@@ -29,6 +29,11 @@ const props = defineProps<{
   highlightedBiome: BiomeId | null;
   previousMaps: MapRecord[];
   biomeStats: BiomeStat[];
+  dayNightEnabled: boolean;
+  dayNightAuto: boolean;
+  dayNightTime: number;
+  dayNightCycleSeconds: number;
+  dayNightPhase: string;
 }>();
 
 const emit = defineEmits<{
@@ -49,7 +54,18 @@ const emit = defineEmits<{
   (e: "exportPng"): void;
   (e: "loadMap", record: MapRecord): void;
   (e: "toggleHighlight", id: BiomeId): void;
+  (e: "update:dayNightEnabled", v: boolean): void;
+  (e: "update:dayNightAuto", v: boolean): void;
+  (e: "update:dayNightTime", v: number): void;
+  (e: "update:dayNightCycleSeconds", v: number): void;
 }>();
+
+const formatTime = (t: number) => {
+  const total = Math.round(t * 24 * 60);
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+};
 
 const randomizeSeed = () => emit("update:seed", Math.floor(Math.random() * 100000));
 
@@ -180,6 +196,60 @@ const copyShareLink = async () => {
           </div>
         </label>
       </div>
+
+      <div class="control-group switch-group">
+        <label class="switch-label">
+          <span class="toggle-text">Day / Night Cycle</span>
+          <div class="toggle-switch">
+            <input
+              :checked="props.dayNightEnabled"
+              @change="emit('update:dayNightEnabled', ($event.target as HTMLInputElement).checked)"
+              type="checkbox"
+            />
+            <span class="slider"></span>
+          </div>
+        </label>
+      </div>
+
+      <template v-if="props.dayNightEnabled">
+        <div class="control-group slider-group">
+          <label>
+            Time of Day
+            <span class="slider-value">{{ formatTime(props.dayNightTime) }} · {{ props.dayNightPhase }}</span>
+          </label>
+          <input
+            :value="props.dayNightTime"
+            @input="emit('update:dayNightTime', Number(($event.target as HTMLInputElement).value))"
+            type="range" min="0" max="0.9999" step="0.001" class="dark-slider"
+          />
+        </div>
+
+        <div class="control-group switch-group">
+          <label class="switch-label">
+            <span class="toggle-text">Auto Cycle</span>
+            <div class="toggle-switch">
+              <input
+                :checked="props.dayNightAuto"
+                @change="emit('update:dayNightAuto', ($event.target as HTMLInputElement).checked)"
+                type="checkbox"
+              />
+              <span class="slider"></span>
+            </div>
+          </label>
+        </div>
+
+        <div class="control-group slider-group" v-if="props.dayNightAuto">
+          <label>
+            Cycle Length
+            <span class="slider-value">{{ props.dayNightCycleSeconds }}s</span>
+          </label>
+          <input
+            :value="props.dayNightCycleSeconds"
+            @input="emit('update:dayNightCycleSeconds', Number(($event.target as HTMLInputElement).value))"
+            type="range" min="10" max="240" step="5" class="dark-slider"
+          />
+        </div>
+      </template>
 
       <div class="divider"></div>
 
